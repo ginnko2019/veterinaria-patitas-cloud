@@ -67,8 +67,20 @@ jobs:
         if: steps.backend.outputs.exists == 'true'
         run: npm run build --prefix apps/api
 
-      - name: Ejecutar pruebas del backend
+      - name: Detectar pruebas del backend
+        id: backend-tests
         if: steps.backend.outputs.exists == 'true'
+        shell: bash
+        run: |
+          if node -e "process.exit(require('./apps/api/package.json').scripts?.test ? 0 : 1)"; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "La API base todavia no contiene script de tests; se habilitara al integrar el dominio de citas."
+          fi
+
+      - name: Ejecutar pruebas del backend
+        if: steps.backend-tests.outputs.exists == 'true'
         run: npm test --prefix apps/api
 
       - name: Resumen
