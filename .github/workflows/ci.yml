@@ -72,11 +72,11 @@ jobs:
         if: steps.backend.outputs.exists == 'true'
         shell: bash
         run: |
-          if node -e "process.exit(require('./apps/api/package.json').scripts?.test ? 0 : 1)"; then
+          if node -e "const test=require('./apps/api/package.json').scripts?.test || ''; process.exit(test && !test.trim().startsWith('echo ') ? 0 : 1)"; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
-            echo "La API base todavia no contiene script de tests; se habilitara al integrar el dominio de citas."
+            echo "El script test no existe o es provisional; se ejecutaran tests reales al integrar el dominio de citas."
           fi
 
       - name: Ejecutar pruebas del backend
