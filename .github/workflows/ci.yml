@@ -1,0 +1,92 @@
+name: CI - Veterinaria Patitas
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Build y pruebas
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Obtener codigo
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Verificar estructura del frontend
+        run: |
+          test -f apps/web/package.json
+          test -f apps/web/tsconfig.json
+
+      # TODO: cambiar a npm ci cuando apps/web/package-lock.json este versionado.
+      - name: Instalar dependencias del frontend
+        run: npm install --prefix apps/web --no-audit --no-fund
+
+      - name: Revisar tipos del frontend
+        run: npm run typecheck --prefix apps/web
+
+      - name: Compilar frontend para produccion
+        run: npm run build --prefix apps/web
+
+      - name: Detectar proyecto de backend
+        id: backend
+        shell: bash
+        run: |
+          if [ -f apps/api/package.json ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "Backend todavia no fusionado con main: se omitiran sus pruebas."
+          fi
+
+      - name: Comprobar lockfile del backend
+        if: steps.backend.outputs.exists == 'true'
+        run: test -f apps/api/package-lock.json
+
+      - name: Instalar dependencias del backend
+        if: steps.backend.outputs.exists == 'true'
+        run: npm ci --prefix apps/api --no-audit --no-fund
+
+      - name: Compilar Azure Functions
+        if: steps.backend.outputs.exists == 'true'
+        run: npm run build --prefix apps/api
+
+      - name: Detectar pruebas del backend
+        id: backend-tests
+        if: steps.backend.outputs.exists == 'true'
+        shell: bash
+        run: |
+          if node -e "const test=require('./apps/api/package.json').scripts?.test || ''; process.exit(test && !test.trim().startsWith('echo ') ? 0 : 1)"; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "El script test no existe o es provisional; se ejecutaran tests reales al integrar el dominio de citas."
+          fi
+
+      - name: Ejecutar pruebas del backend
+        if: steps.backend-tests.outputs.exists == 'true'
+        run: npm test --prefix apps/api
+
+      - name: Resumen
+        if: always()
+        run: |
+          echo "## Veterinaria Patitas - CI" >> "$GITHUB_STEP_SUMMARY"
+          echo "Frontend: tipos y build." >> "$GITHUB_STEP_SUMMARY"
+          echo "Backend: build y pruebas cuando apps/api este presente." >> "$GITHUB_STEP_SUMMARY"
+          echo "Terraform y despliegue Azure se incorporaran en workflows separados." >> "$GITHUB_STEP_SUMMARY"
