@@ -39,13 +39,43 @@ describe("validarCita", () => {
 
   it("rechaza fechas en el pasado", () => {
     esperarError(
-      { ...base, inicioUtc: "2026-11-24T11:59:59Z" },
+      { ...base, inicioUtc: "2026-11-24T11:59:00Z" },
       "FECHA_EN_PASADO"
+    );
+  });
+
+  it("rechaza fechas sin zona explicita", () => {
+    esperarError(
+      { ...base, inicioUtc: "2026-12-01T10:00:00" },
+      "FECHA_INVALIDA"
     );
   });
 
   it("acepta una fecha futura valida", () => {
     expect(() => validarCita(base, ahora)).not.toThrow();
+  });
+
+  it("acepta un offset equivalente a una hora valida", () => {
+    expect(() =>
+      validarCita(
+        { ...base, inicioUtc: "2026-12-01T10:00:00-05:00" },
+        ahora
+      )
+    ).not.toThrow();
+  });
+
+  it("rechaza segundos distintos de cero", () => {
+    esperarError(
+      { ...base, inicioUtc: "2026-12-01T15:00:01Z" },
+      "FECHA_INVALIDA"
+    );
+  });
+
+  it("rechaza milisegundos distintos de cero", () => {
+    esperarError(
+      { ...base, inicioUtc: "2026-12-01T15:00:00.001Z" },
+      "FECHA_INVALIDA"
+    );
   });
 
   it("rechaza domingo", () => {

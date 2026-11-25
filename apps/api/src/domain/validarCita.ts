@@ -4,13 +4,12 @@ import {
   HORA_INICIO,
   OFFSET_BOGOTA_HORAS,
 } from "./config";
+import { canonicalizarInicioUtc } from "./canonicalizarInicioUtc";
 import { DominioError } from "./errores";
 import { NuevaCitaInput } from "./cita";
 
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const ISO_CON_ZONA_REGEX =
-  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:?\d{2})$/i;
 
 export function validarCita(
   input: NuevaCitaInput,
@@ -34,17 +33,8 @@ export function validarCita(
     throw new DominioError("ID_INVALIDO", 400);
   }
 
-  if (
-    typeof input.inicioUtc !== "string" ||
-    !ISO_CON_ZONA_REGEX.test(input.inicioUtc)
-  ) {
-    throw new DominioError("FECHA_INVALIDA", 400);
-  }
-
-  const fecha = new Date(input.inicioUtc);
-  if (Number.isNaN(fecha.getTime())) {
-    throw new DominioError("FECHA_INVALIDA", 400);
-  }
+  const inicioUtcCanonico = canonicalizarInicioUtc(input.inicioUtc);
+  const fecha = new Date(inicioUtcCanonico);
 
   if (fecha.getTime() <= ahora.getTime()) {
     throw new DominioError("FECHA_EN_PASADO", 422);
@@ -55,23 +45,19 @@ export function validarCita(
   const bogota = new Date(bogotaMs);
   const diaUtc = bogota.getUTCDay();
 
-  if (!DIAS_ATENCION.includes(diaUtc as (typeof DIAS_ATENCION)[number])) {
+  if (
+    DIAS_ATENCION.indexOf(diaUtc as (typeof DIAS_ATENCION)[number]) === -1
+  ) {
     throw new DominioError("HORARIO_NO_PERMITIDO", 422);
   }
 
   const hora = bogota.getUTCHours();
   const minutos = bogota.getUTCMinutes();
-  const segundos = bogota.getUTCSeconds();
-
   if (hora < HORA_INICIO || hora >= HORA_FIN) {
     throw new DominioError("HORARIO_NO_PERMITIDO", 422);
   }
 
   if (minutos !== 0 && minutos !== 30) {
-    throw new DominioError("FRANJA_NO_ALINEADA", 422);
-  }
-
-  if (segundos !== 0 || bogota.getUTCMilliseconds() !== 0) {
     throw new DominioError("FRANJA_NO_ALINEADA", 422);
   }
 

@@ -1,5 +1,9 @@
 import { Cita } from "../domain/cita";
 
+/**
+ * Todos los valores inicioUtc intercambiados con el repositorio son ISO 8601
+ * UTC canónicos; el futuro índice único SQL operará sobre ese valor.
+ */
 export interface CitasRepository {
   crear(cita: Cita): Cita;
   listarPorCliente(clienteId: string): Cita[];

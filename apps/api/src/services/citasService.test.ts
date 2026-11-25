@@ -27,13 +27,20 @@ function crearServicio(): CitasService {
   );
 }
 
-function esperarCodigo(action: () => unknown, code: string): void {
+function esperarCodigo(
+  action: () => unknown,
+  code: string,
+  status?: number
+): void {
   try {
     action();
     throw new Error("Se esperaba DominioError");
   } catch (error) {
     expect(error).toBeInstanceOf(DominioError);
     expect((error as DominioError).code).toBe(code);
+    if (status !== undefined) {
+      expect((error as DominioError).status).toBe(status);
+    }
   }
 }
 
@@ -43,6 +50,7 @@ describe("CitasService", () => {
     const cita = servicio.crearCita(base, clienteA, ahora);
     expect(cita.clienteId).toBe("cliente-a");
     expect(cita.estado).toBe("PROGRAMADA");
+    expect(cita.inicioUtc).toBe("2026-12-01T15:00:00.000Z");
   });
 
   it("rechaza doble reserva", () => {
@@ -54,12 +62,72 @@ describe("CitasService", () => {
     );
   });
 
+  it("rechaza la misma franja con offsets equivalentes en ambos ordenes", () => {
+    const utcPrimero = crearServicio();
+    utcPrimero.crearCita(base, clienteA, ahora);
+    esperarCodigo(
+      () =>
+        utcPrimero.crearCita(
+          { ...base, inicioUtc: "2026-12-01T10:00:00-05:00" },
+          clienteA,
+          ahora
+        ),
+      "CONFLICTO_HORARIO",
+      409
+    );
+
+    const offsetPrimero = crearServicio();
+    offsetPrimero.crearCita(
+      { ...base, inicioUtc: "2026-12-01T10:00:00-05:00" },
+      clienteA,
+      ahora
+    );
+    esperarCodigo(
+      () =>
+        offsetPrimero.crearCita(
+          { ...base, inicioUtc: "2026-12-01T15:00:00Z" },
+          clienteA,
+          ahora
+        ),
+      "CONFLICTO_HORARIO",
+      409
+    );
+  });
+
+  it("rechaza la misma franja expresada con offset UTC", () => {
+    const servicio = crearServicio();
+    servicio.crearCita(base, clienteA, ahora);
+    esperarCodigo(
+      () =>
+        servicio.crearCita(
+          { ...base, inicioUtc: "2026-12-01T15:00:00+00:00" },
+          clienteA,
+          ahora
+        ),
+      "CONFLICTO_HORARIO",
+      409
+    );
+  });
+
   it("cancelar libera la franja y permite reservar de nuevo", () => {
     const servicio = crearServicio();
     const cita = servicio.crearCita(base, clienteA, ahora);
     const cancelada = servicio.cancelarCita(cita.id, clienteA);
     expect(cancelada.estado).toBe("CANCELADA");
     expect(() => servicio.crearCita(base, clienteA, ahora)).not.toThrow();
+  });
+
+  it("cancelar libera la franja para una reserva con otro offset", () => {
+    const servicio = crearServicio();
+    const cita = servicio.crearCita(base, clienteA, ahora);
+    servicio.cancelarCita(cita.id, clienteA);
+
+    const nueva = servicio.crearCita(
+      { ...base, inicioUtc: "2026-12-01T10:00:00-05:00" },
+      clienteA,
+      ahora
+    );
+    expect(nueva.inicioUtc).toBe("2026-12-01T15:00:00.000Z");
   });
 
   it("el cliente A no ve citas del cliente B", () => {
@@ -122,5 +190,32 @@ describe("CitasService", () => {
     };
     const cita = servicio.crearCita(input, clienteA, ahora);
     expect(cita.clienteId).toBe("cliente-a");
+  });
+
+  it("asigna al cliente propietario cuando agenda un ADMIN", () => {
+    const servicio = crearServicio();
+    const cita = servicio.crearCita(base, admin, ahora);
+
+    expect(cita.clienteId).toBe("cliente-a");
+    expect(servicio.listarCitas(clienteA)).toEqual([cita]);
+    expect(servicio.listarCitas(clienteB)).toEqual([]);
+    expect(servicio.cancelarCita(cita.id, clienteA).estado).toBe("CANCELADA");
+  });
+
+  it("ADMIN recibe NO_ENCONTRADA para una mascota inexistente", () => {
+    const servicio = crearServicio();
+    esperarCodigo(
+      () =>
+        servicio.crearCita(
+          {
+            ...base,
+            mascotaId: "90000000-0000-4000-8000-000000000001",
+          },
+          admin,
+          ahora
+        ),
+      "NO_ENCONTRADA",
+      404
+    );
   });
 });

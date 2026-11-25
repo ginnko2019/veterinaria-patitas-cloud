@@ -3,6 +3,7 @@ export interface NuevaCitaInput {
   veterinarioId: string;
   servicioId: string;
   inicioUtc: string;
+  /** Opcional en el dominio; el frontend puede exigirlo. */
   motivo?: string;
 }
 

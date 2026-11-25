@@ -1,4 +1,5 @@
 import { Cita, NuevaCitaInput } from "../domain/cita";
+import { canonicalizarInicioUtc } from "../domain/canonicalizarInicioUtc";
 import { DominioError } from "../domain/errores";
 import { validarCita } from "../domain/validarCita";
 import {
@@ -22,16 +23,18 @@ export class CitasService {
     usuario: UsuarioAutenticado,
     ahora: Date = new Date()
   ): Cita {
-    validarCita(input, ahora);
+    const inicioUtc = canonicalizarInicioUtc(input.inicioUtc);
+    const citaInput = { ...input, inicioUtc };
+    validarCita(citaInput, ahora);
 
-    if (!this.catalogo.obtenerVeterinario(input.veterinarioId)) {
+    if (!this.catalogo.obtenerVeterinario(citaInput.veterinarioId)) {
       throw new DominioError("NO_ENCONTRADA", 404);
     }
-    if (!this.catalogo.obtenerServicio(input.servicioId)) {
+    if (!this.catalogo.obtenerServicio(citaInput.servicioId)) {
       throw new DominioError("NO_ENCONTRADA", 404);
     }
 
-    const mascota = this.catalogo.obtenerMascota(input.mascotaId);
+    const mascota = this.catalogo.obtenerMascota(citaInput.mascotaId);
     if (!mascota) {
       throw new DominioError("NO_ENCONTRADA", 404);
     }
@@ -40,8 +43,8 @@ export class CitasService {
     }
 
     const ocupada = this.citas.buscarActivaPorVeterinarioEInicio(
-      input.veterinarioId,
-      input.inicioUtc
+      citaInput.veterinarioId,
+      inicioUtc
     );
     if (ocupada) {
       throw new DominioError("CONFLICTO_HORARIO", 409);
@@ -49,12 +52,12 @@ export class CitasService {
 
     return this.citas.crear({
       id: "",
-      clienteId: usuario.id,
-      mascotaId: input.mascotaId,
-      veterinarioId: input.veterinarioId,
-      servicioId: input.servicioId,
-      inicioUtc: input.inicioUtc,
-      motivo: input.motivo,
+      clienteId: mascota.clienteId,
+      mascotaId: citaInput.mascotaId,
+      veterinarioId: citaInput.veterinarioId,
+      servicioId: citaInput.servicioId,
+      inicioUtc,
+      motivo: citaInput.motivo,
       estado: "PROGRAMADA",
     });
   }

@@ -1,4 +1,5 @@
 import { Cita } from "../domain/cita";
+import { canonicalizarInicioUtc } from "../domain/canonicalizarInicioUtc";
 import {
   CatalogoRepository,
   CitasRepository,
@@ -16,9 +17,10 @@ export class MemoriaCitasRepository implements CitasRepository {
   crear(cita: Cita): Cita {
     const creada = {
       ...cita,
-      id: `10000000-0000-4000-8000-${this.siguienteId
-        .toString()
-        .padStart(12, "0")}`,
+      inicioUtc: canonicalizarInicioUtc(cita.inicioUtc),
+      id: `10000000-0000-4000-8000-${(
+        "000000000000" + this.siguienteId
+      ).slice(-12)}`,
     };
     this.siguienteId += 1;
     this.citas.push(creada);
@@ -48,10 +50,11 @@ export class MemoriaCitasRepository implements CitasRepository {
     veterinarioId: string,
     inicioUtc: string
   ): Cita | undefined {
+    const inicioUtcCanonico = canonicalizarInicioUtc(inicioUtc);
     return this.citas.find(
       (cita) =>
         cita.veterinarioId === veterinarioId &&
-        cita.inicioUtc === inicioUtc &&
+        cita.inicioUtc === inicioUtcCanonico &&
         cita.estado === "PROGRAMADA"
     );
   }
