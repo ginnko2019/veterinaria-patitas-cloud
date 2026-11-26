@@ -6,6 +6,7 @@ Este directorio declara la **primera capa cloud** mediante Terraform: Resource G
 
 ## Estructura
 - `versions.tf`: proveedor AzureRM 4.x y estado remoto.
+- `.terraform.lock.hcl`: versión y sumas de verificación del proveedor; se versiona y el pipeline lo utiliza sin modificarlo.
 - `variables.tf`: variables y validaciones.
 - `main.tf`: recursos declarativos.
 - `outputs.tf`: nombres y URL sin credenciales.
@@ -38,11 +39,14 @@ Como el estado remoto y la identidad que ejecutará Terraform deben existir ante
 ## 2. Comprobación automática
 
 Cada Pull Request que cambie `infra/terraform/**` dispara:
+- `actionlint` para comprobar las expresiones y los scripts del workflow.
 - `terraform fmt -check -recursive`
-- `terraform init -backend=false` (no necesita acceso Azure)
+- `terraform init -backend=false -lockfile=readonly` (no necesita acceso Azure)
 - `terraform validate`
 
 Estas comprobaciones **no prueban** permisos, disponibilidad regional ni costos. Es necesario ejecutar `plan` contra la suscripción antes de afirmar que el despliegue funciona.
+
+Los estados, planes y archivos temporales de Terraform se excluyen mediante `.gitignore`; el estado remoto se guarda únicamente en el backend configurado. Las ejecuciones de infraestructura del mismo ambiente se serializan para evitar operaciones simultáneas.
 
 ## 3. Plan y despliegue DEV/PROD desde GitHub Actions
 
@@ -56,9 +60,15 @@ Una vez completado el bootstrap y las variables:
 
 El pipeline **no realiza apply automáticamente con cada push**: esto evita crear recursos facturables o desplegar cambios en producción sin autorización. Cada ejecución `apply` parte de un plan generado y validado dentro de esa misma ejecución.
 
+### Publicación del paquete de Azure Functions
+
+Linux Consumption (`Y1`) no admite `WEBSITE_RUN_FROM_PACKAGE=1`. Por eso esta capa no define ese valor. El futuro pipeline de la API deberá publicar el ZIP compilado en almacenamiento privado y configurar `WEBSITE_RUN_FROM_PACKAGE` con la URL del paquete, preferiblemente con acceso mediante identidad administrada. En ese incremento se definirá quién administra esa propiedad para evitar que Terraform revierta la URL. Ver [despliegue de paquetes de Azure Functions](https://learn.microsoft.com/en-us/azure/azure-functions/deployment-zip-push) y [tecnologías de despliegue](https://learn.microsoft.com/en-us/azure/azure-functions/functions-deployment-technologies?tabs=linux).
+
 ## 4. Seguridad obligatoria antes de publicar citas
 
 La integración `azurerm_static_web_app_function_app_registration` asocia Azure Functions a Static Web Apps Standard y configura autenticación AuthV2. El archivo `apps/web/public/staticwebapp.config.json` exige usuarios autenticados en `/api/*`, salvo `/api/health`.
+
+La asociación SWA administra `auth_settings_v2`; la Function utiliza `lifecycle.ignore_changes = [auth_settings_v2]` para preservar esa configuración en aplicaciones posteriores de Terraform, siguiendo el [ejemplo oficial de AzureRM](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/static_web_app_function_app_registration). Cuando exista el entorno, revisar un segundo `terraform plan` y repetir la prueba de acceso directo. Microsoft describe la protección del backend vinculado en [Bring your own functions to Azure Static Web Apps](https://learn.microsoft.com/en-us/azure/static-web-apps/functions-bring-your-own).
 
 **Prueba de seguridad bloqueante antes de producción:** comprobar con una solicitud HTTP directa a `https://<functionapp>.azurewebsites.net/api/citas` y una cabecera `x-ms-client-principal` **falsificada** que Azure rechaza la solicitud (`401`/`403`). Si no la rechaza, detener el despliegue. Las verificaciones de roles y pertenencia de mascotas también deben pasar en pruebas. El PR #6 del backend no está aprobado mientras falte esta garantía.
 

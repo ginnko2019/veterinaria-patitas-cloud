@@ -81,11 +81,17 @@ resource "azurerm_linux_function_app" "api" {
 
   app_settings = {
     "FUNCTIONS_WORKER_RUNTIME" = "node"
-    "WEBSITE_RUN_FROM_PACKAGE" = "1"
   }
 
-  # No configurar auth_settings_v2 directamente: el registro SWA aplica
-  # la configuracion Azure Static Web Apps AuthV2.
+  # Linux Consumption requiere una URL de paquete, no el valor "1".
+  # La publicacion del ZIP y su URL se incorporaran con el pipeline de la API.
+
+  # El registro SWA administra AuthV2. Conservar su configuracion para que
+  # futuras aplicaciones de Terraform no reviertan la autenticacion vinculada.
+  lifecycle {
+    ignore_changes = [auth_settings_v2]
+  }
+
   tags = local.common_tags
 }
 
@@ -99,8 +105,8 @@ resource "azurerm_static_web_app" "web" {
   tags                         = local.common_tags
 }
 
-# Link seguro solo cuando se active y compruebe que Azure bloquea
-# peticiones DIRECTAS a la Function con una identidad falsificada.
+# Esta asociacion configura AuthV2 en la Function al aplicar la infraestructura.
+# Antes de publicar citas, verificar que rechaza peticiones DIRECTAS falsificadas.
 resource "azurerm_static_web_app_function_app_registration" "backend" {
   static_web_app_id = azurerm_static_web_app.web.id
   function_app_id   = azurerm_linux_function_app.api.id
