@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { API_BASE_URL, patitasApi } from './services/api'
+import { obtenerSesion, URL_CERRAR_SESION, URL_INICIAR_SESION } from './services/auth'
 
 type HealthState = 'sin-configurar' | 'consultando' | 'conectada' | 'error'
+type SesionState = 'consultando' | 'autenticada' | 'sin-sesion' | 'sin-servicio'
 
 const servicios = [
   { numero: '01', nombre: 'Consulta general', detalle: 'Evaluación preventiva y orientación veterinaria.' },
@@ -23,6 +25,17 @@ function Paw({ small = false }: { small?: boolean }) {
 
 export default function App() {
   const [health, setHealth] = useState<HealthState>(API_BASE_URL ? 'consultando' : 'sin-configurar')
+  const [sesion, setSesion] = useState<SesionState>('consultando')
+
+  useEffect(() => {
+    const controller = new AbortController()
+    obtenerSesion(controller.signal)
+      .then((principal) => setSesion(principal ? 'autenticada' : 'sin-sesion'))
+      .catch(() => {
+        if (!controller.signal.aborted) setSesion('sin-servicio')
+      })
+    return () => controller.abort()
+  }, [])
 
   useEffect(() => {
     if (!API_BASE_URL) return
@@ -116,6 +129,17 @@ export default function App() {
               <div className="status-panel__icon">⌁</div>
               <h3>{estado}</h3>
               <p>{health === 'sin-configurar' ? 'Define VITE_API_BASE_URL en el archivo .env local para consultar la API de Azure Functions.' : health === 'conectada' ? 'El endpoint de salud respondió correctamente. La gestión de citas requiere autenticación.' : health === 'consultando' ? 'Consultando el endpoint /api/health…' : 'Verifica la dirección de la API, CORS y que Azure Functions esté ejecutándose.'}</p>
+              <div className="session-area">
+                {sesion === 'autenticada' ? (
+                  <><span className="session-note">Sesión iniciada en Static Web Apps. La agenda estará disponible después de validar la seguridad del backend.</span>
+                  <a className="session-link" href={URL_CERRAR_SESION}>Cerrar sesión</a></>
+                ) : sesion === 'sin-sesion' ? (
+                  <><span className="session-note">Inicia sesión para acceder a las citas cuando esté lista la integración.</span>
+                  <a className="session-link" href={URL_INICIAR_SESION}>Iniciar sesión con Microsoft</a></>
+                ) : (
+                  <span className="session-note">{sesion === 'consultando' ? 'Comprobando sesión…' : 'La autenticación estará disponible en el sitio desplegado en Azure Static Web Apps.'}</span>
+                )}
+              </div>
               <div className="status-panel__foot"><span>API / HEALTH</span><span>{health === 'conectada' ? 'OPERATIVA' : 'EN PREPARACIÓN'}</span></div>
             </div>
           </div>
