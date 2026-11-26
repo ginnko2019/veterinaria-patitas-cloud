@@ -10,7 +10,7 @@ Este contrato parte del **Manual de implementación de Nicolás**, entregado par
 ## 1. Convenciones
 
 - Prefijo HTTP de Azure Functions: `/api`.
-- URL local sugerida para el backend: `http://localhost:7071/api`; en el frontend la variable `VITE_API_BASE_URL` contendrá la URL **incluido el sufijo /api**.
+- URL local sugerida del backend: `http://localhost:7071/api`; Vite puede configurar `VITE_API_BASE_URL` para desarrollo. **En producción, el frontend usa siempre la ruta relativa `/api`** de Static Web Apps para enviar la cookie de sesion al mismo origen.
 - Formato: JSON, con nombres de propiedades en `camelCase`.
 - Identificadores: UUID expresados como cadenas.
 - Tiempos: formato ISO 8601 en UTC (por ejemplo, `2026-11-19T15:00:00Z`). La interfaz mostrará la zona `America/Bogota`.
@@ -53,7 +53,7 @@ export interface CrearCitaRequest {
   veterinarioId: string;
   servicioId: string;
   inicioUtc: string;
-  motivo: string;
+  motivo?: string;
 }
 
 export interface Cita {
@@ -79,7 +79,7 @@ La estructura de `Cita` es el **mínimo previsto** para la pantalla de agenda; e
 ```http
 POST /api/citas
 Content-Type: application/json
-Authorization: Bearer <token-autorizado>
+Cookie: <sesion-de-Static-Web-Apps>
 ```
 
 ```json
@@ -92,7 +92,7 @@ Authorization: Bearer <token-autorizado>
 }
 ```
 
-El esquema de autenticación mostrado es **ilustrativo**, no una decisión implementada: el equipo debe acordar el proveedor de identidad y cómo Azure Functions valida los tokens. El frontend no debe asumir que una `Function Key` constituye autenticación de usuarios.
+El backend PR #6 usa la identidad de sesión de Azure Static Web Apps. El navegador **no fabrica ni envía** `x-ms-client-principal`: el proxy de SWA debe incorporarla tras autenticar. Se requiere validar el aislamiento de la URL directa de Functions antes de aprobar y desplegar el PR #6; la comprobacion local de sesion (`/.auth/me`) no reemplaza la autorización del servidor.
 
 ### Ejemplo: error de horario ocupado
 
@@ -111,7 +111,7 @@ El esquema de autenticación mostrado es **ilustrativo**, no una decisión imple
 | Usuario no autenticado | 401 |
 | Sin autorización | 403 |
 | Recurso inexistente | 404 |
-| Franja ya reservada | 409 |
+| Franja ya reservada (`HORARIO_OCUPADO` en HTTP) | 409 |
 | Regla de negocio incumplida (p. ej., fecha pasada) | 422 |
 | Error inesperado | 500 sin detalles internos |
 
