@@ -24,9 +24,11 @@ El contrato propuesto está en ../../docs/api/contrato-citas.md.
 src/types/api.ts define los tipos y src/services/api.ts concentra las peticiones.
 
 - GET /api/health es el único endpoint usado desde la interfaz inicial.
-- Los métodos de citas exigen un token de acceso suministrado por una futura capa de autenticación.
+- En produccion, el cliente API usa rutas relativas `/api` y la sesion del mismo origen de Azure Static Web Apps (sin bearer tokens).
+- `src/services/auth.ts` consulta `/.auth/me` solo para presentar el estado de sesion; no reemplaza la autorizacion del servidor.
 - No se publican operaciones privadas sin autorización ni se simula persistencia.
-- Las llamadas de React se habilitarán cuando Nicolás confirme el contrato de datos y se complete la autenticación.
+- Los endpoints de citas no se invocan desde la interfaz hasta que el PR #6 complete el aislamiento/validacion de identidad y quede comprobado que la URL directa de la Function rechaza cabeceras falsas.
+- Para una reserva amigable falta un endpoint de mascotas por usuario (`GET /api/mascotas`), que debe implementar el backend con autorizacion.
 
 Si el backend está apagado o VITE_API_BASE_URL no está configurada, el portal muestra un estado informativo en vez de inventar datos.
 
