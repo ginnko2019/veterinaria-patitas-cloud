@@ -147,3 +147,15 @@ vite.config.ts.timestamp-*
 
 # Turbo Repo
 .turbo
+
+# Terraform: estado, planes y configuracion local (pueden contener secretos)
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan
+crash.log
+crash.*.log
+*.tfvars.local
+*.tfvars.local.json
+# .terraform.lock.hcl se versiona para fijar los proveedores.
