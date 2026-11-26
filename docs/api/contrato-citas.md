@@ -62,7 +62,7 @@ export interface Cita {
   veterinarioId: string;
   servicioId: string;
   inicioUtc: string;
-  motivo: string;
+  motivo?: string;
   estado: EstadoCita;
 }
 

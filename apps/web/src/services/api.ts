@@ -11,7 +11,7 @@ import type {
 // El proxy SWA adjunta la identidad verificada; no enviar tokens inventados.
 export const API_BASE_URL = import.meta.env.PROD
   ? '/api'
-  : (import.meta.env.VITE_API_BASE_URL?.trim().replace(/\/+$/, '') || '/api')
+  : (import.meta.env.VITE_API_BASE_URL?.trim().replace(/\/+$/, '') ?? '')
 
 export class ApiRequestError extends Error {
   constructor(
