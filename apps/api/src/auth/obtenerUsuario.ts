@@ -10,11 +10,21 @@ interface PrincipalStaticWebApps {
   userRoles: string[];
 }
 
+let avisoIdentidadNoConfiableRegistrado = false;
+
+// TRUST_SWA_PRINCIPAL solo debe activarse cuando la infraestructura garantiza que
+// la Function recibe tráfico únicamente de Static Web Apps; ADMIN debe asignarlo
+// la administración de roles de SWA, nunca el cliente.
 export function obtenerUsuario(request: HttpRequest): Usuario | null {
-  // Este encabezado SOLO es confiable si la Function no es accesible directamente
-  // desde internet y recibe tráfico únicamente a través de Static Web Apps;
-  // ese aislamiento debe coordinarse con la infraestructura.
   const principalCodificado = request.headers.get("x-ms-client-principal");
+  if (process.env.TRUST_SWA_PRINCIPAL !== "true") {
+    if (principalCodificado && !avisoIdentidadNoConfiableRegistrado) {
+      console.warn("IDENTIDAD_NO_CONFIABLE");
+      avisoIdentidadNoConfiableRegistrado = true;
+    }
+    return null;
+  }
+
   if (!principalCodificado) return null;
 
   try {

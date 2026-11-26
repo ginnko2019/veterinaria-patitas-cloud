@@ -47,7 +47,7 @@ function obtenerIdCita(request: HttpRequest): string | null {
 export async function postCita(
   request: HttpRequest,
   context: InvocationContext,
-  servicio: CitasService = obtenerServicioCitas()
+  servicio?: CitasService
 ): Promise<HttpResponseInit> {
   const usuario = obtenerUsuario(request);
   if (!usuario) return respuestaNoAutenticado();
@@ -68,6 +68,7 @@ export async function postCita(
   }
 
   try {
+    const servicioCitas = servicio ?? obtenerServicioCitas();
     const input: NuevaCitaInput = {
       mascotaId: body.mascotaId,
       veterinarioId: body.veterinarioId,
@@ -75,7 +76,7 @@ export async function postCita(
       inicioUtc: body.inicioUtc,
       motivo: body.motivo,
     };
-    const creada = servicio.crearCita(input, usuario);
+    const creada = servicioCitas.crearCita(input, usuario);
     return { status: 201, jsonBody: citaPublica(creada) };
   } catch (error) {
     return respuestaError(error, "/api/citas", context);
@@ -85,15 +86,16 @@ export async function postCita(
 export async function getCitas(
   request: HttpRequest,
   context: InvocationContext,
-  servicio: CitasService = obtenerServicioCitas()
+  servicio?: CitasService
 ): Promise<HttpResponseInit> {
   const usuario = obtenerUsuario(request);
   if (!usuario) return respuestaNoAutenticado();
 
   try {
+    const servicioCitas = servicio ?? obtenerServicioCitas();
     return {
       status: 200,
-      jsonBody: servicio.listarCitas(usuario).map(citaPublica),
+      jsonBody: servicioCitas.listarCitas(usuario).map(citaPublica),
     };
   } catch (error) {
     return respuestaError(error, "/api/citas", context);
@@ -103,7 +105,7 @@ export async function getCitas(
 export async function patchCancelarCita(
   request: HttpRequest,
   context: InvocationContext,
-  servicio: CitasService = obtenerServicioCitas()
+  servicio?: CitasService
 ): Promise<HttpResponseInit> {
   const usuario = obtenerUsuario(request);
   if (!usuario) return respuestaNoAutenticado();
@@ -118,7 +120,8 @@ export async function patchCancelarCita(
   }
 
   try {
-    const cancelada = servicio.cancelarCita(id, usuario);
+    const servicioCitas = servicio ?? obtenerServicioCitas();
+    const cancelada = servicioCitas.cancelarCita(id, usuario);
     return { status: 200, jsonBody: citaPublica(cancelada) };
   } catch (error) {
     return respuestaError(error, "/api/citas/{id}/cancelar", context);

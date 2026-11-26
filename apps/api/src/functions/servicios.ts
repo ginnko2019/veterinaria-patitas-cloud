@@ -12,13 +12,14 @@ import { respuestaError, respuestaNoAutenticado } from "./http";
 export async function getServicios(
   request: HttpRequest,
   context: InvocationContext,
-  catalogo: CatalogoRepository = obtenerRepositorioCatalogo()
+  catalogo?: CatalogoRepository
 ): Promise<HttpResponseInit> {
   const usuario = obtenerUsuario(request);
   if (!usuario) return respuestaNoAutenticado();
 
   try {
-    return { status: 200, jsonBody: catalogo.listarServicios() };
+    const catalogoRepository = catalogo ?? obtenerRepositorioCatalogo();
+    return { status: 200, jsonBody: catalogoRepository.listarServicios() };
   } catch (error) {
     return respuestaError(error, "/api/servicios", context);
   }

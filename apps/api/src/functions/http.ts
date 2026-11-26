@@ -48,6 +48,20 @@ export function respuestaError(
     return respuestaJsonInvalido();
   }
 
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "PERSISTENCIA_NO_CONFIGURADA"
+  ) {
+    context?.error("PERSISTENCIA_NO_CONFIGURADA");
+    return respuestaErrorJson(
+      "ERROR_INTERNO",
+      "Ocurrió un error interno.",
+      500
+    );
+  }
+
   context?.error(`ERROR_INTERNO ${ruta}`);
   return respuestaErrorJson(
     "ERROR_INTERNO",

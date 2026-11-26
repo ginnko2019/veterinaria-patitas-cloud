@@ -1,5 +1,5 @@
 import { HttpRequest, InvocationContext } from "@azure/functions";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getServicios } from "./servicios";
 import { getVeterinarios } from "./veterinarios";
 import { getCitas, patchCancelarCita, postCita } from "./citas";
@@ -92,8 +92,13 @@ function iniciarCita(
 
 describe("handlers HTTP", () => {
   beforeEach(() => {
+    vi.stubEnv("TRUST_SWA_PRINCIPAL", "true");
     reiniciarRepositorios();
     vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   it("rechaza sin autenticación todas las rutas", async () => {

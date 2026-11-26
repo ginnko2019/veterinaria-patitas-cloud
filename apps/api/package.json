@@ -9,7 +9,8 @@
     "clean": "rimraf dist",
     "prestart": "npm run clean && npm run build",
     "start": "func start",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:seguridad": "vitest run src/security"
   },
   "dependencies": {
     "@azure/functions": "^4.0.0"
