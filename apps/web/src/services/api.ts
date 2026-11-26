@@ -7,7 +7,11 @@ import type {
   Veterinario,
 } from '../types/api'
 
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.trim().replace(/\/+$/, '') ?? ''
+// En produccion la API siempre se publica bajo la MISMA URL de Static Web Apps.
+// El proxy SWA adjunta la identidad verificada; no enviar tokens inventados.
+export const API_BASE_URL = import.meta.env.PROD
+  ? '/api'
+  : (import.meta.env.VITE_API_BASE_URL?.trim().replace(/\/+$/, '') || '/api')
 
 export class ApiRequestError extends Error {
   constructor(
@@ -23,40 +27,28 @@ export class ApiRequestError extends Error {
 type RequestOptions = {
   method?: 'GET' | 'POST' | 'PATCH'
   body?: unknown
-  accessToken?: string
   signal?: AbortSignal
 }
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  if (!API_BASE_URL) {
-    throw new ApiRequestError(0, 'API_NO_CONFIGURADA', 'Configura VITE_API_BASE_URL para conectar la API.')
-  }
-
   const headers: Record<string, string> = { Accept: 'application/json' }
-
-  if (options.body !== undefined) {
-    headers['Content-Type'] = 'application/json'
-  }
-
-  if (options.accessToken) {
-    headers.Authorization = 'Bearer ' + options.accessToken
-  }
+  if (options.body !== undefined) headers['Content-Type'] = 'application/json'
 
   const response = await fetch(API_BASE_URL + path, {
     method: options.method ?? 'GET',
     headers,
+    credentials: 'same-origin',
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
     signal: options.signal,
   })
 
   const isJson = response.headers.get('content-type')?.includes('application/json')
   let payload: unknown = null
-
   if (isJson) {
     try {
       payload = await response.json() as unknown
     } catch {
-      throw new ApiRequestError(response.status, 'RESPUESTA_INVALIDA', 'La API devolvió JSON inválido.')
+      throw new ApiRequestError(response.status, 'RESPUESTA_INVALIDA', 'La API devolvio JSON invalido.')
     }
   }
 
@@ -69,14 +61,11 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     )
   }
 
-  return payload as T
-}
-
-function requireToken(accessToken: string): string {
-  if (!accessToken.trim()) {
-    throw new ApiRequestError(401, 'AUTENTICACION_REQUERIDA', 'Debes iniciar sesión para gestionar citas.')
+  if (!isJson) {
+    throw new ApiRequestError(response.status, 'RESPUESTA_INVALIDA', 'La API no devolvio JSON.')
   }
-  return accessToken
+
+  return payload as T
 }
 
 export const patitasApi = {
@@ -84,13 +73,10 @@ export const patitasApi = {
   veterinarios: (signal?: AbortSignal) => request<Veterinario[]>('/veterinarios', { signal }),
   servicios: (signal?: AbortSignal) => request<Servicio[]>('/servicios', { signal }),
 
-  // Las operaciones de citas se habilitarán en UI cuando haya autenticación real.
-  citas: (token: string) => request<Cita[]>('/citas', { accessToken: requireToken(token) }),
-  crearCita: (token: string, data: CrearCitaRequest) =>
-    request<Cita>('/citas', { method: 'POST', body: data, accessToken: requireToken(token) }),
-  cancelarCita: (token: string, id: string) =>
-    request<Cita>('/citas/' + encodeURIComponent(id) + '/cancelar', {
-      method: 'PATCH',
-      accessToken: requireToken(token),
-    }),
+  // Backend PR #6: acceso solo tras validar la sesion y el acceso DIRECTO denegado.
+  // No invocar desde la interfaz de produccion hasta cerrar la revision de seguridad.
+  citas: () => request<Cita[]>('/citas'),
+  crearCita: (data: CrearCitaRequest) => request<Cita>('/citas', { method: 'POST', body: data }),
+  cancelarCita: (id: string) =>
+    request<Cita>('/citas/' + encodeURIComponent(id) + '/cancelar', { method: 'PATCH' }),
 }
