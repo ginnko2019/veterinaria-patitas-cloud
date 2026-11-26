@@ -2,6 +2,7 @@ import { HttpRequest, InvocationContext } from "@azure/functions";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getServicios } from "./servicios";
 import { getVeterinarios } from "./veterinarios";
+import { getMascotas } from "./mascotas";
 import { getCitas, patchCancelarCita, postCita } from "./citas";
 import {
   MemoriaCatalogoRepository,
@@ -40,6 +41,7 @@ function crearRequest(
     body?: unknown;
     jsonError?: Error;
     params?: Record<string, string>;
+    query?: Record<string, string>;
   } = {}
 ): HttpRequest {
   const headers = new Map<string, string>();
@@ -61,6 +63,7 @@ function crearRequest(
       get: (name: string) => headers.get(name.toLowerCase()) ?? null,
     },
     params: options.params ?? {},
+    query: new URLSearchParams(options.query),
     json: async () => {
       if (options.jsonError) throw options.jsonError;
       return options.body;
@@ -106,6 +109,7 @@ describe("handlers HTTP", () => {
     const respuestas = await Promise.all([
       getVeterinarios(sinUsuario, contexto, catalogo),
       getServicios(sinUsuario, contexto, catalogo),
+      getMascotas(sinUsuario, contexto, servicio),
       postCita(sinUsuario, contexto, servicio),
       getCitas(sinUsuario, contexto, servicio),
       patchCancelarCita(
@@ -116,7 +120,7 @@ describe("handlers HTTP", () => {
     ]);
 
     expect(respuestas.map((respuesta) => respuesta.status)).toEqual([
-      401, 401, 401, 401, 401,
+      401, 401, 401, 401, 401, 401,
     ]);
     expect(respuestas[0].jsonBody).toEqual({
       code: "NO_AUTENTICADO",
@@ -140,11 +144,96 @@ describe("handlers HTTP", () => {
     const request = crearRequest({ userId: CLIENTE_A });
     const veterinarios = await getVeterinarios(request, contexto, catalogo);
     const servicios = await getServicios(request, contexto, catalogo);
+    const mascotas = await getMascotas(request, contexto, servicio);
 
     expect(veterinarios.status).toBe(200);
     expect(Array.isArray(veterinarios.jsonBody)).toBe(true);
     expect(servicios.status).toBe(200);
     expect(Array.isArray(servicios.jsonBody)).toBe(true);
+    expect(mascotas.status).toBe(200);
+    expect(Array.isArray(mascotas.jsonBody)).toBe(true);
+  });
+
+  it("lista únicamente las mascotas propias de cada cliente e ignora clienteId", async () => {
+    const respuestaA = await getMascotas(
+      crearRequest({ userId: CLIENTE_A, query: { clienteId: CLIENTE_B } }),
+      contexto,
+      servicio
+    );
+    const respuestaB = await getMascotas(
+      crearRequest({ userId: CLIENTE_B }),
+      contexto,
+      servicio
+    );
+    const mascotasA = respuestaA.jsonBody as Array<Record<string, unknown>>;
+    const mascotasB = respuestaB.jsonBody as Array<Record<string, unknown>>;
+
+    expect(mascotasA).toEqual([{ id: MASCOTA_A, nombre: "Luna" }]);
+    expect(mascotasB).toEqual([{ id: MASCOTA_B, nombre: "Max" }]);
+    expect(mascotasA.some((mascota) => mascota.id === MASCOTA_B)).toBe(false);
+    expect(mascotasB.some((mascota) => mascota.id === MASCOTA_A)).toBe(false);
+    for (const mascota of [...mascotasA, ...mascotasB]) {
+      expect(Object.keys(mascota).sort()).toEqual(["id", "nombre"]);
+    }
+  });
+
+  it("devuelve una lista vacía si el usuario no tiene mascotas asociadas", async () => {
+    vi.spyOn(catalogo, "listarMascotasPorCliente").mockReturnValue([]);
+    const respuesta = await getMascotas(
+      crearRequest({ userId: "cliente-sin-mascotas" }),
+      contexto,
+      servicio
+    );
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.jsonBody).toEqual([]);
+  });
+
+  it("requiere clienteId para ADMIN y lista las mascotas del cliente solicitado", async () => {
+    const sinCliente = await getMascotas(
+      crearRequest({ userId: ADMIN, roles: ["authenticated", "ADMIN"] }),
+      contexto,
+      servicio
+    );
+    const conCliente = await getMascotas(
+      crearRequest({
+        userId: ADMIN,
+        roles: ["authenticated", "ADMIN"],
+        query: { clienteId: CLIENTE_B },
+      }),
+      contexto,
+      servicio
+    );
+
+    expect(sinCliente.status).toBe(400);
+    expect(sinCliente.jsonBody).toEqual({
+      code: "CLIENTE_REQUERIDO",
+      message: "El parámetro clienteId es obligatorio para ADMIN.",
+    });
+    expect(conCliente.status).toBe(200);
+    expect(conCliente.jsonBody).toEqual([{ id: MASCOTA_B, nombre: "Max" }]);
+  });
+
+  it("permite agendar usando el id listado y rechaza una mascota ajena", async () => {
+    const listado = await getMascotas(
+      crearRequest({ userId: CLIENTE_A }),
+      contexto,
+      servicio
+    );
+    const mascotaId = (listado.jsonBody as Array<{ id: string }>)[0].id;
+    const creada = await postCita(
+      crearRequest({ userId: CLIENTE_A, body: input(mascotaId) }),
+      contexto,
+      servicio
+    );
+    const ajena = await postCita(
+      crearRequest({ userId: CLIENTE_A, body: input(MASCOTA_B) }),
+      contexto,
+      servicio
+    );
+
+    expect(creada.status).toBe(201);
+    expect(ajena.status).toBe(404);
   });
 
   it("rechaza JSON inválido y estructuras que no sean objetos válidos", async () => {

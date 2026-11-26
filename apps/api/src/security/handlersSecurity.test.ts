@@ -5,6 +5,7 @@ import { obtenerServicioCitas } from "../container";
 import { getCitas, patchCancelarCita, postCita } from "../functions/citas";
 import { getServicios } from "../functions/servicios";
 import { getVeterinarios } from "../functions/veterinarios";
+import { getMascotas } from "../functions/mascotas";
 
 const CLIENTE_ID = "cliente-a";
 const INICIO = "2030-12-03T15:00:00Z";
@@ -26,6 +27,7 @@ function requestConPrincipal(
         name.toLowerCase() === "x-ms-client-principal" ? principal : null,
     },
     params,
+    query: new URLSearchParams(),
     json: async () => body,
   } as unknown as HttpRequest;
 }
@@ -73,12 +75,13 @@ describe("seguridad de identidad y persistencia", () => {
     const respuestas = await Promise.all([
       getVeterinarios(request, contexto),
       getServicios(request, contexto),
+      getMascotas(request, contexto),
       getCitas(request, contexto),
       postCita(request, contexto),
       patchCancelarCita(request, contexto),
     ]);
     expect(respuestas.map((respuesta) => respuesta.status)).toEqual([
-      401, 401, 401, 401, 401,
+      401, 401, 401, 401, 401, 401,
     ]);
   });
 
@@ -90,6 +93,7 @@ describe("seguridad de identidad y persistencia", () => {
     const catalogos = requestAutenticado();
     const veterinarios = await getVeterinarios(catalogos, contexto);
     const servicios = await getServicios(catalogos, contexto);
+    const mascotas = await getMascotas(catalogos, contexto);
     const listado = await getCitas(catalogos, contexto);
     const creada = await postCita(
       requestAutenticado(citaInput),
@@ -104,10 +108,11 @@ describe("seguridad de identidad y persistencia", () => {
     expect([
       veterinarios.status,
       servicios.status,
+      mascotas.status,
       listado.status,
       creada.status,
       cancelada.status,
-    ]).toEqual([200, 200, 200, 201, 200]);
+    ]).toEqual([200, 200, 200, 200, 201, 200]);
   });
 
   it.each([

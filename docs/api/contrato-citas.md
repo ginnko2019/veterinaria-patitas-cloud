@@ -24,6 +24,7 @@ Este contrato parte del **Manual de implementación de Nicolás**, entregado par
 | GET | `/api/health` | Salud del servicio | `200`: `{"status":"ok","service":"patitas-api"}` |
 | GET | `/api/veterinarios` | Catálogo de veterinarios | `200`: arreglo JSON |
 | GET | `/api/servicios` | Catálogo de servicios | `200`: arreglo JSON |
+| GET | `/api/mascotas` | Mascotas del cliente autenticado o de un cliente indicado por ADMIN | `200`: arreglo de `Mascota` |
 | POST | `/api/citas` | Crear cita propia | `201`: cita creada |
 | GET | `/api/citas` | Consultar citas según identidad/rol | `200`: arreglo JSON |
 | PATCH | `/api/citas/{id}/cancelar` | Cancelar cita autorizada | `200`: cita actualizada |
@@ -48,12 +49,17 @@ export interface Servicio {
   duracionMinutos: number;
 }
 
+export interface Mascota {
+  id: string;
+  nombre: string;
+}
+
 export interface CrearCitaRequest {
   mascotaId: string;
   veterinarioId: string;
   servicioId: string;
   inicioUtc: string;
-  motivo: string;
+  motivo?: string;
 }
 
 export interface Cita {
@@ -62,7 +68,7 @@ export interface Cita {
   veterinarioId: string;
   servicioId: string;
   inicioUtc: string;
-  motivo: string;
+  motivo?: string;
   estado: EstadoCita;
 }
 
@@ -73,6 +79,23 @@ export interface ApiError {
 ```
 
 La estructura de `Cita` es el **mínimo previsto** para la pantalla de agenda; el backend podrá incorporar campos adicionales que no expongan información de terceros. Los campos `nombre` y `duracionMinutos` de los catálogos también son propuestas a revisar.
+
+Para `GET /api/mascotas`, un usuario con rol CLIENTE recibe únicamente sus mascotas; un usuario ADMIN debe indicar `clienteId`. La respuesta expone solo `id` y `nombre`.
+
+### Ejemplo: listar mascotas
+
+```http
+GET /api/mascotas
+```
+
+```json
+[
+  {
+    "id": "2c73eae2-d6f2-4f38-aeb8-82cb722f9328",
+    "nombre": "Luna"
+  }
+]
+```
 
 ### Ejemplo: registrar una cita
 

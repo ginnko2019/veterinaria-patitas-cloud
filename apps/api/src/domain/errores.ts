@@ -1,9 +1,10 @@
 export class DominioError extends Error {
   constructor(
     public code: string,
-    public status: number = ESTADOS_DOMINIO[code] ?? 500
+    public status: number = ESTADOS_DOMINIO[code] ?? 500,
+    message: string = code
   ) {
-    super(code);
+    super(message);
   }
 }
 
@@ -17,6 +18,7 @@ export const CODIGOS_DOMINIO = {
   CONFLICTO_HORARIO: "CONFLICTO_HORARIO",
   NO_ENCONTRADA: "NO_ENCONTRADA",
   SIN_PERMISO: "SIN_PERMISO",
+  CLIENTE_REQUERIDO: "CLIENTE_REQUERIDO",
 } as const;
 
 export const ESTADOS_DOMINIO: Record<string, number> = {
@@ -29,4 +31,5 @@ export const ESTADOS_DOMINIO: Record<string, number> = {
   [CODIGOS_DOMINIO.CONFLICTO_HORARIO]: 409,
   [CODIGOS_DOMINIO.NO_ENCONTRADA]: 404,
   [CODIGOS_DOMINIO.SIN_PERMISO]: 403,
+  [CODIGOS_DOMINIO.CLIENTE_REQUERIDO]: 400,
 };

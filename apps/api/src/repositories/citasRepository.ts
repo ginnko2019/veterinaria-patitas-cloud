@@ -36,6 +36,8 @@ export interface Servicio {
 export interface CatalogoRepository {
   listarVeterinarios(): Veterinario[];
   listarServicios(): Servicio[];
+  // El repositorio de Azure SQL deberá implementar este método en otro PR.
+  listarMascotasPorCliente(clienteId: string): Mascota[];
   obtenerMascota(id: string): Mascota | undefined;
   obtenerVeterinario(id: string): Veterinario | undefined;
   obtenerServicio(id: string): Servicio | undefined;
