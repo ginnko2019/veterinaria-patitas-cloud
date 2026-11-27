@@ -79,11 +79,18 @@ resource "azurerm_linux_function_app" "api" {
     application_insights_connection_string = azurerm_application_insights.api.connection_string
   }
 
-  app_settings = {
-    "FUNCTIONS_WORKER_RUNTIME" = "node"
-    "TRUST_SWA_PRINCIPAL"      = "false"
-    "APP_ENV"                  = var.environment
-  }
+  app_settings = merge(
+    {
+      "FUNCTIONS_WORKER_RUNTIME" = "node"
+      "TRUST_SWA_PRINCIPAL"      = "false"
+      "APP_ENV"                  = var.environment
+    },
+    var.sql_enabled ? {
+      "SQL_SERVER_FQDN"   = azurerm_mssql_server.dev[0].fully_qualified_domain_name
+      "SQL_DATABASE_NAME" = azurerm_mssql_database.dev[0].name
+      "SQL_AUTH_MODE"     = "managed-identity"
+    } : {}
+  )
 
   # Linux Consumption requiere una URL de paquete, no el valor "1".
   # La publicacion del ZIP y su URL se incorporaran con el pipeline de la API.

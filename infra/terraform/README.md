@@ -2,7 +2,9 @@
 
 Este directorio declara la **primera capa cloud** mediante Terraform: Resource Group, Azure Storage para el runtime, App Service Plan Linux Consumption, Azure Functions Node.js 22, Application Insights/Log Analytics y Static Web Apps Standard con una Function vinculada como backend.
 
-**Alcance actual:** infraestructura y asociación SWA/Functions; **no** instala aún las aplicaciones, la base de datos Azure SQL ni las identidades de negocio. No confundir esta versión con el MVP final desplegado.
+**Alcance actual:** infraestructura y asociación SWA/Functions, con Azure SQL opcional **solo para DEV**. SQL permanece deshabilitado hasta configurar su administrador Entra y habilitarlo expresamente. Este código no instala las aplicaciones, las migraciones de negocio ni el repositorio SQL del backend; tampoco acredita un despliegue real.
+
+Para preparar la base DEV y la conexión de Nicolás, seguir [SQL-DEV.md](SQL-DEV.md).
 
 ## Estructura
 - `versions.tf`: proveedor AzureRM 4.x y estado remoto.
@@ -10,6 +12,8 @@ Este directorio declara la **primera capa cloud** mediante Terraform: Resource G
 - `variables.tf`: variables y validaciones.
 - `main.tf`: recursos declarativos.
 - `outputs.tf`: nombres y URL sin credenciales.
+- `sql.tf`, `sql-variables.tf` y `sql-outputs.tf`: servidor/base DEV, acceso de red y configuración de conexión sin contraseñas.
+- `tests/sql.tftest.hcl`: planes con un proveedor simulado; no crea recursos en Azure.
 - `environments/dev.tfvars` y `environments/prod.tfvars`: parámetros de ambiente.
 - `.github/workflows/terraform.yml`: validación y plan/apply desde GitHub Actions.
 
@@ -43,6 +47,7 @@ Cada Pull Request que cambie `infra/terraform/**` dispara:
 - `terraform fmt -check -recursive`
 - `terraform init -backend=false -lockfile=readonly` (no necesita acceso Azure)
 - `terraform validate`
+- `terraform test` con proveedor simulado: SQL opcional, configuración DEV y rechazos de PROD, firewall abierto o administrador ausente.
 
 Estas comprobaciones **no prueban** permisos, disponibilidad regional ni costos. Es necesario ejecutar `plan` contra la suscripción antes de afirmar que el despliegue funciona.
 
@@ -91,7 +96,7 @@ Un cambio manual del flag en el portal se revertiría en el siguiente `terraform
 
 ## 5. Pendientes para completar la rúbrica
 
-- Persistencia en Azure SQL y migraciones de base de datos (Nicolás + Rodrigo).
+- Aprovisionamiento real y acceso de SQL DEV (Rodrigo); migraciones, repositorio SQL y pruebas de concurrencia (Nicolás).
 - Autenticación, asignación de roles, pruebas directas de acceso seguro (PR #6).
 - Pipeline que **publique el artefacto compilado** React/Functions en Azure, con smoke tests y rollback.
 - Alerta de observabilidad y prueba de falla/recuperación.
