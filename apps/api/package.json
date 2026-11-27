@@ -10,7 +10,8 @@
     "prestart": "npm run clean && npm run build",
     "start": "func start",
     "test": "vitest run",
-    "test:seguridad": "vitest run src/security"
+    "test:seguridad": "vitest run src/security",
+    "test:seguridad:azure": "node scripts/test-seguridad-azure.cjs"
   },
   "dependencies": {
     "@azure/functions": "^4.0.0"
