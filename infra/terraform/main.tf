@@ -1,5 +1,6 @@
 locals {
-  prefix = "patitas-${var.environment}"
+  prefix           = "patitas-${var.environment}"
+  runtime_location = var.runtime_location != "" ? var.runtime_location : var.location
 
   common_tags = merge(var.tags, {
     ambiente = var.environment
@@ -49,7 +50,7 @@ resource "azurerm_application_insights" "api" {
 resource "azurerm_service_plan" "functions" {
   name                = "asp-${local.prefix}"
   resource_group_name = azurerm_resource_group.patitas.name
-  location            = azurerm_resource_group.patitas.location
+  location            = local.runtime_location
   os_type             = "Linux"
   sku_name            = "Y1"
   tags                = local.common_tags
@@ -58,7 +59,7 @@ resource "azurerm_service_plan" "functions" {
 resource "azurerm_linux_function_app" "api" {
   name                = "func-${local.prefix}-${var.name_suffix}"
   resource_group_name = azurerm_resource_group.patitas.name
-  location            = azurerm_resource_group.patitas.location
+  location            = local.runtime_location
   service_plan_id     = azurerm_service_plan.functions.id
 
   storage_account_name       = azurerm_storage_account.functions.name
