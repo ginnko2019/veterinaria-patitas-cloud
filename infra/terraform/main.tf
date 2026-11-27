@@ -81,6 +81,8 @@ resource "azurerm_linux_function_app" "api" {
 
   app_settings = {
     "FUNCTIONS_WORKER_RUNTIME" = "node"
+    "TRUST_SWA_PRINCIPAL"      = "false"
+    "APP_ENV"                  = var.environment
   }
 
   # Linux Consumption requiere una URL de paquete, no el valor "1".

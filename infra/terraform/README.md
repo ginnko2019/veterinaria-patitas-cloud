@@ -70,9 +70,24 @@ La integración `azurerm_static_web_app_function_app_registration` asocia Azure 
 
 La asociación SWA administra `auth_settings_v2`; la Function utiliza `lifecycle.ignore_changes = [auth_settings_v2]` para preservar esa configuración en aplicaciones posteriores de Terraform, siguiendo el [ejemplo oficial de AzureRM](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/static_web_app_function_app_registration). Cuando exista el entorno, revisar un segundo `terraform plan` y repetir la prueba de acceso directo. Microsoft describe la protección del backend vinculado en [Bring your own functions to Azure Static Web Apps](https://learn.microsoft.com/en-us/azure/static-web-apps/functions-bring-your-own).
 
-**Prueba de seguridad bloqueante antes de producción:** comprobar con una solicitud HTTP directa a `https://<functionapp>.azurewebsites.net/api/citas` y una cabecera `x-ms-client-principal` **falsificada** que Azure rechaza la solicitud (`401`/`403`). Si no la rechaza, detener el despliegue. Las verificaciones de roles y pertenencia de mascotas también deben pasar en pruebas. El PR #6 del backend no está aprobado mientras falte esta garantía.
+Terraform declara `TRUST_SWA_PRINCIPAL="false"` y `APP_ENV=dev/prod`. El backend del PR #6 rechaza los principales SWA mientras la confianza esté apagada. No se configura `PERSISTENCE=memory`: la memoria queda limitada a desarrollo local y pruebas; en Azure, las operaciones de negocio permanecen bloqueadas hasta implementar y configurar la persistencia SQL. Crear la base o añadir sus variables no activa un repositorio SQL.
 
-La aplicación de citas sigue utilizando almacenamiento en memoria hasta implementar una persistencia duradera en Azure SQL y un control transaccional de franjas ocupadas. **No desplegar una API de citas reales sin cumplir estos controles**.
+La activación requiere evidencia del entorno real, en este orden:
+
+1. Conservar la confianza apagada al crear los recursos y publicar los artefactos. Inspeccionar en Azure que AuthV2 está habilitado, exige autenticación y utiliza el proveedor vinculado a la SWA correcta. La protección es de autenticación de plataforma; no sustituirla por restricciones IP que impidan la asociación SWA.
+2. Comprobar que `/api/health` responde `200` con `{"status":"ok","service":"patitas-api"}` a través de esa SWA y que el mismo endpoint, accedido directamente a la Function sin identidad o con un principal falsificado, responde `401`/`403`. El rechazo de una ruta privada con el flag apagado no demuestra por sí solo el bloqueo de plataforma.
+3. Con el incremento de seguridad del PR #6 disponible, ejecutar desde la raíz del repositorio la comprobación estricta contra ambas URL reales, incluyendo `/api`:
+
+   ```bash
+   FUNCTION_DIRECT_URL='https://<functionapp>.azurewebsites.net/api' \
+   SWA_API_URL='https://<staticwebapp>.azurestaticapps.net/api' \
+   npm run test:seguridad:azure --prefix apps/api
+   ```
+
+   Una URL ausente, un error de red, un `404` o una prueba omitida no acreditan el aislamiento. Conservar el resultado junto con la configuración AuthV2 inspeccionada.
+4. Completar y probar SQL, migraciones, permisos de ejecución y persistencia; después, cambiar `TRUST_SWA_PRINCIPAL` a `"true"` mediante un cambio revisado en Terraform. Repetir la comprobación de acceso directo con la confianza activa y verificar una sesión legítima a través de SWA, incluidos roles y propiedad de mascotas/citas.
+
+Un cambio manual del flag en el portal se revertiría en el siguiente `terraform apply`; la activación debe quedar en la configuración versionada. Los detalles del helper, los roles y las pruebas se mantienen en [la guía de identidad](../../docs/seguridad-identidad.md), incorporada por el PR #6, todavía pendiente de integración con esta rama. **No habilitar citas reales antes de completar estas verificaciones.**
 
 ## 5. Pendientes para completar la rúbrica
 
