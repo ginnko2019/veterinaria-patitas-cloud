@@ -2,7 +2,7 @@
 
 ## Estado de integración
 
-La infraestructura SQL se preparó en el PR #9, fusionado en una rama intermedia. El PR #11 de Nicolás incorpora migraciones, repositorios asíncronos y mapeo de clientes. La integración de ambas partes en `main` y las pruebas reales en Azure siguen pendientes. La presencia del código no acredita que la base exista, que se hayan aplicado scripts o que la conexión funcione.
+El PR #11 de Nicolás incorpora migraciones, repositorios asíncronos y mapeo de clientes. La infraestructura SQL preparada en el PR #9 quedó en una rama intermedia; el PR #12 lleva esa infraestructura a `main`. Antes de preparar DEV, comprobar que ambas partes estén integradas. La presencia del código no acredita que la base exista, que se hayan aplicado scripts o que la conexión funcione: eso requiere verificación en Azure.
 
 ## Contrato de configuración
 
@@ -49,24 +49,70 @@ El rol de runtime `patitas_api_runtime` concede `SELECT`, `INSERT` y `UPDATE` so
    - `database/migrations/001_init.sql`.
    - `database/seeds/001_catalogos_dev.sql`, con datos sintéticos.
 
-   Antes de ejecutarlos, completar la revisión de transacciones y opciones SET necesarias para el índice filtrado. El usuario de runtime no administra el esquema.
-4. **Preparar un cliente de prueba:** `database/seeds/002_cliente_demo.template.sql` usa sustitución SQLCMD dentro de texto SQL. Su carga con valores variables requiere parametrización y una transacción antes de usarse con nombres o identidades suministrados por usuarios. No usar esa sustitución como si escapara valores.
+   Ejecutar cada archivo completo, sin una transacción previa. Ambos establecen las siete opciones SET del índice filtrado, `XACT_ABORT ON` y una transacción con rollback y propagación del error. El catálogo sintético solo admite la base `patitas-dev`. La migración crea los objetos ausentes; no sustituye tablas existentes ni corrige automáticamente un esquema divergente. El usuario de runtime no administra el esquema.
+4. **Preparar un cliente y una mascota de prueba:** utilizar la carga parametrizada descrita a continuación. Se retiró la plantilla SQLCMD que insertaba valores variables dentro del SQL. No construir una plantilla equivalente por sustitución de texto.
 5. **Publicar el backend SQL y comprobar la conexión** con sus settings completos. Verificar lectura/escritura, aislamiento entre clientes, conflicto 409 en reservas concurrentes y persistencia después de reiniciar.
 6. **Verificar SWA/Functions y habilitar la confianza** siguiendo [la guía de infraestructura](../infra/terraform/README.md#4-seguridad-obligatoria-antes-de-publicar-citas). Repetir las pruebas con sesión real después del cambio de configuración versionado.
 
 Los scripts de esquema y seeds pertenecen al incremento del PR #11; el bootstrap pertenece al incremento de infraestructura SQL. Integrar ambos antes de ejecutar este procedimiento.
 
+## Carga parametrizada de cliente y mascota DEV
+
+La carga utiliza `mssql`, un token Entra obtenido con `DefaultAzureCredential` y parámetros tipados. Ejecutarla con una identidad de preparación de datos autorizada en DEV. El comando no crea usuarios ni concede permisos, y no requiere ampliar el rol de la Function.
+
+Preparar un archivo JSON **fuera del repositorio** con estos cuatro campos y completarlos antes de ejecutar:
+
+```json
+{
+  "identityId": "",
+  "nombreCliente": "",
+  "mascotaId": "",
+  "nombreMascota": ""
+}
+```
+
+- `identityId`: identificador exacto de la cuenta SWA de prueba, con máximo de 128 caracteres. No es un client ID de Azure ni el UUID interno de `Clientes`.
+- `nombreCliente`: nombre sintético, hasta 100 caracteres; admite apóstrofes.
+- `mascotaId`: UUID propio de esa mascota de prueba. Generarlo una sola vez y conservarlo en el archivo para las siguientes ejecuciones.
+- `nombreMascota`: nombre sintético, hasta 80 caracteres; admite apóstrofes.
+
+El CLI rechaza archivos ubicados dentro del repositorio, incluso si se accede a ellos mediante un enlace simbólico. No pasar identidades ni nombres como argumentos SQLCMD ni guardarlos en archivos versionados.
+
+Desde la raíz del repositorio, con la identidad Entra de preparación y el esquema ya aplicado:
+
+```bash
+export APP_ENV=dev
+export SQL_SERVER_FQDN="<servidor-dev>.database.windows.net"
+export SQL_DATABASE_NAME=patitas-dev
+export SQL_AUTH_MODE=managed-identity
+npm run seed:cliente:dev --prefix apps/api -- /ruta/fuera/del/repositorio/cliente-dev.json
+```
+
+El modo `managed-identity` mantiene el contrato de conexión sin password SQL; en este CLI local `DefaultAzureCredential` puede resolver la identidad del desarrollador autorizado. Estas credenciales de preparación no deben copiarse a los app settings de la Function.
+
+La validación de destino ocurre antes de obtener credenciales: exige ambiente `dev`, base `patitas-dev` y FQDN de Azure SQL. Además, el lote comprueba `DB_NAME()` antes de escribir. Cliente y mascota se procesan en una sola transacción serializable. Un error revierte toda la carga.
+
+Reejecutar el mismo archivo reutiliza el cliente por `identity_id` y la mascota por su UUID. No se cambian nombres ni se reasigna una mascota existente: si los datos existentes son incompatibles, la carga falla y revierte. Conservar el mismo `mascotaId`; generar otro UUID representa otra mascota. El resultado del CLI no imprime los datos del archivo ni el token.
+
+## Verificación local sin Azure
+
+Estas pruebas comprueban parametrización, nombres con apóstrofes, rollback y rechazo de destinos distintos de DEV usando mocks; no demuestran ejecución de SQL en un servidor:
+
+```bash
+npm test --prefix apps/api -- src/database/seedClienteDev.test.ts
+```
+
 ## Prueba de integración SQL
 
 La prueba `apps/api/src/repositories/azureSql.integration.test.ts` requiere servidor y base DEV configurados con los nombres del contrato, una identidad de pruebas autorizada y el esquema aplicado. Crea identificadores sintéticos aleatorios, ensaya reservas concurrentes y elimina sus datos al finalizar.
 
-Desde la raíz del repositorio, con esa configuración completa:
+Desde la raíz del repositorio, usar el comando estricto, que exige configuración completa y base `patitas-dev` antes de obtener credenciales o conectarse:
 
 ```bash
-npm test --prefix apps/api -- src/repositories/azureSql.integration.test.ts
+npm run test:sql:azure --prefix apps/api
 ```
 
-Una prueba omitida no demuestra conexión ni persistencia. La CI común utiliza pruebas con mocks y omite el acceso SQL cuando no tiene configuración de integración; comprobar que el caso real se ejecute antes de usar su resultado como evidencia. No ejecutar esa limpieza contra producción ni con la identidad limitada de la Function.
+Una prueba omitida no demuestra conexión ni persistencia. La CI común utiliza pruebas con mocks y omite el acceso SQL únicamente cuando no se solicita la integración ni hay configuración SQL. La configuración parcial debe fallar; el comando estricto no acepta omitir la prueba. No ejecutar esa limpieza contra producción ni con la identidad limitada de la Function. La identidad de runtime sigue usando `patitas_api_runtime` sin `DELETE`; la identidad de pruebas debe disponer de la limpieza necesaria por separado.
 
 ## Reglas del dominio
 
@@ -77,4 +123,4 @@ Una prueba omitida no demuestra conexión ni persistencia. La CI común utiliza 
 - El índice único filtrado de `(veterinario_id, inicio_utc)` para citas `PROGRAMADA` protege las franjas actuales de 30 minutos. Si cambia la duración, revisar solapamientos.
 - Un fallo SQL no habilita una alternativa de memoria en Azure.
 
-Referencias: [ADR-002](../docs/adr/ADR-002-datos.md), [node-mssql](https://tediousjs.github.io/node-mssql/) e [identidad administrada de Functions con Azure SQL](https://learn.microsoft.com/en-us/azure/azure-functions/functions-identity-access-azure-sql-with-managed-identity).
+Referencias: [ADR-002](../docs/adr/ADR-002-datos.md), [opciones SET para índices filtrados](https://learn.microsoft.com/en-us/sql/t-sql/statements/create-index-transact-sql#required-set-options-for-filtered-indexes), [SET XACT_ABORT](https://learn.microsoft.com/en-us/sql/t-sql/statements/set-xact-abort-transact-sql), [TRY/CATCH](https://learn.microsoft.com/en-us/sql/t-sql/language-elements/try-catch-transact-sql) e [identidad administrada de Functions con Azure SQL](https://learn.microsoft.com/en-us/azure/azure-functions/functions-identity-access-azure-sql-with-managed-identity).

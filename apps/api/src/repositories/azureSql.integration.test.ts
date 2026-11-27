@@ -4,17 +4,12 @@ import { DefaultAzureCredential } from "@azure/identity";
 import sql from "mssql";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { getCitas, patchCancelarCita, postCita } from "../functions/citas";
-import { obtenerConfiguracionSql } from "./azureSqlRepository";
+import { readSqlTestConfig } from "../../scripts/sql-test-config.cjs";
 
-// Sin configuración SQL, el CI común omite esta prueba. Una configuración
-// parcial o desconocida sí la activa y falla antes de contactar a Azure.
-const habilitada = [
-  "SQL_SERVER_FQDN",
-  "SQL_DATABASE_NAME",
-  "SQL_AUTH_MODE",
-].some((key) => process.env[key] !== undefined);
-const describeSql = describe.skipIf(!habilitada);
-const credential = new DefaultAzureCredential();
+// Solo la ausencia total permite omitir. El guard protege también las
+// ejecuciones directas de Vitest antes de solicitar tokens o abrir conexiones.
+const sqlTestConfig = readSqlTestConfig(process.env);
+const describeSql = describe.skipIf(sqlTestConfig === null);
 const identityA = `integration-a-${randomUUID()}`;
 const identityB = `integration-b-${randomUUID()}`;
 const clienteA = randomUUID();
@@ -58,7 +53,7 @@ const baseInput = {
 
 describeSql("Azure SQL integration (DEV)", () => {
   beforeAll(async () => {
-    const { server, database } = obtenerConfiguracionSql();
+    const { server, database } = sqlTestConfig!;
     for (const key of [
       "PERSISTENCE",
       "TRUST_SWA_PRINCIPAL",
@@ -68,6 +63,7 @@ describeSql("Azure SQL integration (DEV)", () => {
     process.env.PERSISTENCE = "sql";
     process.env.TRUST_SWA_PRINCIPAL = "true";
 
+    const credential = new DefaultAzureCredential();
     const token = await credential.getToken(
       "https://database.windows.net/.default"
     );

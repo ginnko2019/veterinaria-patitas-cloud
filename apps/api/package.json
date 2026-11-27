@@ -11,7 +11,10 @@
     "start": "func start",
     "test": "vitest run",
     "test:seguridad": "vitest run src/security",
-    "test:seguridad:azure": "node scripts/test-seguridad-azure.cjs"
+    "test:seguridad:azure": "node scripts/test-seguridad-azure.cjs",
+    "test:sql:azure": "node scripts/test-sql-azure.cjs",
+    "preseed:cliente:dev": "npm run build",
+    "seed:cliente:dev": "node scripts/seed-cliente-dev.cjs"
   },
   "dependencies": {
     "@azure/functions": "^4.0.0",
