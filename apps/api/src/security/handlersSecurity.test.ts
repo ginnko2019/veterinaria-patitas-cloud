@@ -144,4 +144,26 @@ describe("seguridad de identidad y persistencia", () => {
       "PERSISTENCIA_NO_CONFIGURADA"
     );
   });
+
+  it.each(["prod", "dev"])("APP_ENV=%s impide memoria incluso con NODE_ENV=test", async (appEnv) => {
+    vi.stubEnv("TRUST_SWA_PRINCIPAL", "true");
+    vi.stubEnv("PERSISTENCE", "memory");
+    vi.stubEnv("APP_ENV", appEnv);
+    vi.stubEnv("NODE_ENV", "test");
+    expect(() => obtenerServicioCitas()).toThrow("PERSISTENCIA_NO_CONFIGURADA");
+    const respuesta = await getCitas(requestAutenticado(), contexto);
+    expect(respuesta.status).toBe(500);
+    expect(respuesta.jsonBody).toEqual({
+      code: "ERROR_INTERNO", message: "Ocurrió un error interno.",
+    });
+  });
+
+  it("permite el runner sin APP_ENV solo cuando la memoria se habilita expresamente", () => {
+    vi.stubEnv("APP_ENV", undefined);
+    vi.stubEnv("NODE_ENV", "test");
+    vi.stubEnv("PERSISTENCE", "memory");
+    expect(() => obtenerServicioCitas()).not.toThrow();
+    vi.stubEnv("PERSISTENCE", undefined);
+    expect(() => obtenerServicioCitas()).toThrow("PERSISTENCIA_NO_CONFIGURADA");
+  });
 });

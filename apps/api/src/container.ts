@@ -13,10 +13,12 @@ let repositoriosMemoria: RepositoriosMemoria | undefined;
 let citasService: CitasService | undefined;
 
 function obtenerRepositoriosMemoria(): RepositoriosMemoria {
+  const appEnv = process.env.APP_ENV;
+  // Un APP_ENV explicito de DEV/PROD no queda anulado por el runner de pruebas.
   const entornoLocal =
-    process.env.APP_ENV === "local" ||
-    process.env.APP_ENV === "test" ||
-    process.env.NODE_ENV === "test";
+    appEnv === undefined
+      ? process.env.NODE_ENV === "test"
+      : appEnv === "local" || appEnv === "test";
   if (process.env.PERSISTENCE !== "memory" || !entornoLocal) {
     throw Object.assign(new Error("PERSISTENCIA_NO_CONFIGURADA"), {
       code: "PERSISTENCIA_NO_CONFIGURADA",
