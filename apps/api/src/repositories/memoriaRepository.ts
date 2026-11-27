@@ -102,6 +102,14 @@ export class MemoriaCatalogoRepository implements CatalogoRepository {
     },
   ];
 
+  listarVeterinarios(): Veterinario[] {
+    return [...this.veterinarios];
+  }
+
+  listarServicios(): Servicio[] {
+    return [...this.servicios];
+  }
+
   obtenerMascota(id: string): Mascota | undefined {
     return this.mascotas.find((mascota) => mascota.id === id);
   }

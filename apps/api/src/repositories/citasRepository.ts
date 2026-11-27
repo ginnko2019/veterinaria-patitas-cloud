@@ -34,6 +34,8 @@ export interface Servicio {
 }
 
 export interface CatalogoRepository {
+  listarVeterinarios(): Veterinario[];
+  listarServicios(): Servicio[];
   obtenerMascota(id: string): Mascota | undefined;
   obtenerVeterinario(id: string): Veterinario | undefined;
   obtenerServicio(id: string): Servicio | undefined;
