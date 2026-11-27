@@ -26,6 +26,18 @@ variable "runtime_location" {
   }
 }
 
+variable "trust_swa_principal" {
+  description = "Confianza en cabecera SWA, solo DEV tras verificar AuthV2 y bloqueo de acceso directo."
+  type        = bool
+  default     = false
+  nullable    = false
+
+  validation {
+    condition     = !var.trust_swa_principal || var.environment == "dev"
+    error_message = "La confianza SWA se activa exclusivamente en DEV tras verificar el aislamiento real."
+  }
+}
+
 variable "name_suffix" {
   description = "Sufijo alfanumerico globalmente unico para Storage, Functions y SWA."
   type        = string

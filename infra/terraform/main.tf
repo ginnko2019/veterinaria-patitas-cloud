@@ -84,7 +84,7 @@ resource "azurerm_linux_function_app" "api" {
   app_settings = merge(
     {
       "FUNCTIONS_WORKER_RUNTIME" = "node"
-      "TRUST_SWA_PRINCIPAL"      = "false"
+      "TRUST_SWA_PRINCIPAL"      = tostring(var.trust_swa_principal)
       "APP_ENV"                  = var.environment
     },
     var.sql_enabled ? {
