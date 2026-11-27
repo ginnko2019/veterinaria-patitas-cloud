@@ -1,6 +1,7 @@
 locals {
   prefix           = "patitas-${var.environment}"
   runtime_location = var.runtime_location != "" ? var.runtime_location : var.location
+  sql_server_name  = "sql-${local.prefix}-${var.name_suffix}${local.runtime_location != var.location ? "-${local.runtime_location}" : ""}"
 
   common_tags = merge(var.tags, {
     ambiente = var.environment

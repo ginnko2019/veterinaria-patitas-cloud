@@ -52,6 +52,7 @@ run "dev_sql_uses_entra_and_explicit_ips" {
   command = plan
 
   variables {
+    runtime_location          = "westcentralus"
     sql_enabled               = true
     sql_entra_admin_name      = "patitas-sql-test-admins"
     sql_entra_admin_object_id = "22222222-2222-4222-8222-222222222222"
@@ -67,6 +68,11 @@ run "dev_sql_uses_entra_and_explicit_ips" {
       length(azurerm_mssql_database.dev) == 1
     )
     error_message = "Habilitar SQL en DEV debe crear exactamente un servidor y una base."
+  }
+
+  assert {
+    condition     = azurerm_mssql_server.dev[0].name == "sql-patitas-dev-sqltest-westcentralus"
+    error_message = "SQL en otra region requiere nombre nuevo para no chocar con el servidor residual en eastus2."
   }
 
   assert {
