@@ -1,5 +1,6 @@
 locals {
-  prefix = "patitas-${var.environment}"
+  prefix           = "patitas-${var.environment}"
+  runtime_location = var.runtime_location != "" ? var.runtime_location : var.location
 
   common_tags = merge(var.tags, {
     ambiente = var.environment
@@ -49,7 +50,7 @@ resource "azurerm_application_insights" "api" {
 resource "azurerm_service_plan" "functions" {
   name                = "asp-${local.prefix}"
   resource_group_name = azurerm_resource_group.patitas.name
-  location            = azurerm_resource_group.patitas.location
+  location            = local.runtime_location
   os_type             = "Linux"
   sku_name            = "Y1"
   tags                = local.common_tags
@@ -58,7 +59,7 @@ resource "azurerm_service_plan" "functions" {
 resource "azurerm_linux_function_app" "api" {
   name                = "func-${local.prefix}-${var.name_suffix}"
   resource_group_name = azurerm_resource_group.patitas.name
-  location            = azurerm_resource_group.patitas.location
+  location            = local.runtime_location
   service_plan_id     = azurerm_service_plan.functions.id
 
   storage_account_name       = azurerm_storage_account.functions.name
@@ -93,13 +94,14 @@ resource "azurerm_linux_function_app" "api" {
     } : {}
   )
 
-  # Linux Consumption requiere una URL de paquete, no el valor "1".
-  # La publicacion del ZIP y su URL se incorporaran con el pipeline de la API.
-
-  # El registro SWA administra AuthV2. Conservar su configuracion para que
-  # futuras aplicaciones de Terraform no reviertan la autenticacion vinculada.
+  # Linux Consumption ejecuta la URL del ZIP que publica el workflow de la API.
+  # El registro SWA administra AuthV2. Conservar ambos valores para que un
+  # apply posterior no retire el paquete ni revierta la autenticacion vinculada.
   lifecycle {
-    ignore_changes = [auth_settings_v2]
+    ignore_changes = [
+      auth_settings_v2,
+      app_settings["WEBSITE_RUN_FROM_PACKAGE"],
+    ]
   }
 
   tags = local.common_tags

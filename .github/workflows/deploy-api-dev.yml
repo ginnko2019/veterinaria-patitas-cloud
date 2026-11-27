@@ -1,0 +1,113 @@
+name: Publicar API DEV - Veterinaria Patitas
+
+on:
+  pull_request:
+    paths:
+      - 'apps/api/**'
+      - 'scripts/deploy-api-dev*'
+      - 'scripts/package-api-dev.sh'
+      - '.github/workflows/deploy-api-dev.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Probar y empaquetar API Node 22
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/api/package-lock.json
+      - name: Validar publicador sin Azure
+        run: |
+          bash -n scripts/package-api-dev.sh
+          node --test scripts/deploy-api-dev.test.cjs
+      - name: Compilar y probar API
+        working-directory: apps/api
+        run: |
+          npm ci
+          npm run build
+          npm test
+      - name: Empaquetar solo archivos de ejecucion
+        run: bash scripts/package-api-dev.sh "$RUNNER_TEMP/patitas-api.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: patitas-api-${{ github.sha }}
+          path: ${{ runner.temp }}/patitas-api.zip
+          if-no-files-found: error
+          retention-days: 3
+
+  deploy:
+    name: Publicar API y verificar aislamiento DEV
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: dev
+    concurrency:
+      group: terraform-dev
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      TF_NAME_SUFFIX: ${{ vars.TF_NAME_SUFFIX }}
+      TF_RESOURCE_GROUP_ID: ${{ vars.TF_RESOURCE_GROUP_ID }}
+      AZURE_CORE_OUTPUT: none
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/api/package-lock.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: patitas-api-${{ github.sha }}
+          path: ${{ runner.temp }}/patitas-api-artifact
+      - name: Preparar verificacion y validar destino antes de autenticar
+        run: |
+          npm ci --prefix apps/api
+          node scripts/deploy-api-dev.cjs --check
+      - name: Autenticar con la identidad OIDC existente
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Publicar paquete privado sin cambiar confianza SWA
+        id: api
+        run: node scripts/deploy-api-dev.cjs "$RUNNER_TEMP/patitas-api-artifact/patitas-api.zip"
+      - name: Exigir health por SWA y denegacion directa
+        env:
+          FUNCTION_DIRECT_URL: ${{ steps.api.outputs.function_direct_url }}
+          SWA_API_URL: ${{ steps.api.outputs.swa_api_url }}
+        run: |
+          for intento in 1 2 3; do
+            if npm run test:seguridad:azure --prefix apps/api; then
+              exit 0
+            fi
+            if [[ "$intento" -lt 3 ]]; then sleep 10; fi
+          done
+          exit 1
+      - name: Registrar resultado sin credenciales
+        env:
+          PACKAGE_EXPIRES_UTC: ${{ steps.api.outputs.package_expires_utc }}
+          OBSERVED_SWA_TRUST: ${{ steps.api.outputs.trust_swa_principal }}
+        run: |
+          {
+            echo '## API DEV publicada y frontera SWA comprobada'
+            echo "Commit: $GITHUB_SHA"
+            echo "Renovar el paquete mediante redeploy antes de: $PACKAGE_EXPIRES_UTC"
+            printf 'TRUST_SWA_PRINCIPAL conservado: %s\n' "$OBSERVED_SWA_TRUST"
+            echo 'Este gate no acredita SQL ni las pruebas con sesiones reales.'
+          } >> "$GITHUB_STEP_SUMMARY"

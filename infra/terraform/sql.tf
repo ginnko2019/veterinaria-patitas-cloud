@@ -8,7 +8,7 @@ resource "azurerm_mssql_server" "dev" {
 
   name                          = "sql-${local.prefix}-${var.name_suffix}"
   resource_group_name           = azurerm_resource_group.patitas.name
-  location                      = azurerm_resource_group.patitas.location
+  location                      = local.runtime_location
   version                       = "12.0"
   minimum_tls_version           = "1.2"
   public_network_access_enabled = true

@@ -24,6 +24,14 @@ jobs:
       - name: Obtener codigo
         uses: actions/checkout@v4
 
+      - name: Validar workflows de integracion y despliegue
+        uses: docker://rhysd/actionlint:1.7.12
+        with:
+          args: -color
+
+      - name: Validar sintaxis del diagnostico Azure
+        run: bash -n scripts/check-azure-dev-capacity.sh
+
       - name: Configurar Node.js
         uses: actions/setup-node@v4
         with:
@@ -85,7 +93,9 @@ jobs:
       - name: Resumen
         if: always()
         run: |
-          echo "## Veterinaria Patitas - CI" >> "$GITHUB_STEP_SUMMARY"
-          echo "Frontend: tipos y build." >> "$GITHUB_STEP_SUMMARY"
-          echo "Backend: build y pruebas cuando apps/api este presente." >> "$GITHUB_STEP_SUMMARY"
-          echo "Terraform y despliegue Azure se incorporaran en workflows separados." >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "## Veterinaria Patitas - CI"
+            echo "Frontend: tipos y build. Backend: build y pruebas."
+            echo "Consultar el resultado de cada validacion en los pasos anteriores."
+            echo "Terraform y publicacion DEV se ejecutan manualmente en sus workflows."
+          } >> "$GITHUB_STEP_SUMMARY"

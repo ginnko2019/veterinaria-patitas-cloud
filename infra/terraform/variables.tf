@@ -14,6 +14,18 @@ variable "location" {
   default     = "eastus2"
 }
 
+variable "runtime_location" {
+  description = "Region opcional de Functions y SQL. Vacia mantiene la region original de los recursos."
+  type        = string
+  default     = ""
+  nullable    = false
+
+  validation {
+    condition     = var.runtime_location == "" || can(regex("^[a-z0-9]+$", var.runtime_location))
+    error_message = "runtime_location debe ser un nombre corto de region Azure sin espacios, o vacio."
+  }
+}
+
 variable "name_suffix" {
   description = "Sufijo alfanumerico globalmente unico para Storage, Functions y SWA."
   type        = string
