@@ -89,8 +89,16 @@ ensure_group "$state_rg" "$state_tags"
 
 for namespace in Microsoft.Storage Microsoft.Web Microsoft.Insights Microsoft.OperationalInsights Microsoft.Sql; do
   progress "Provider: comprobando $namespace."
-  provider="$(arm provider show --namespace "$namespace")"
-  status="$(jq -er --arg ns "$namespace" 'select(.namespace == $ns) | .registrationState | select(type == "string")' <<<"$provider")"
+  provider="$(arm provider show --namespace "$namespace")" || fail "No se pudo consultar el provider $namespace."
+  # Azure puede devolver microsoft.insights aunque se consulte Microsoft.Insights.
+  if ! status="$(jq -er --arg ns "$namespace" '
+    select(type == "object") |
+    select((.namespace | type) == "string") |
+    select((.namespace | ascii_downcase) == ($ns | ascii_downcase)) |
+    .registrationState | select(type == "string" and length > 0)
+  ' <<<"$provider")"; then
+    fail "Respuesta invalida del provider $namespace: namespace o registrationState ausente/incompatible."
+  fi
   case "$status" in
     Registered) ;;
     NotRegistered|Unregistered|Registering)
