@@ -214,6 +214,39 @@ describe("handlers HTTP", () => {
     expect(conCliente.jsonBody).toEqual([{ id: MASCOTA_B, nombre: "Max" }]);
   });
 
+  it.each(["", "   \t "])(
+    "rechaza clienteId vacío o con espacios para ADMIN (%j)",
+    async (clienteId) => {
+      const respuesta = await getMascotas(
+        crearRequest({
+          userId: ADMIN,
+          roles: ["authenticated", "ADMIN"],
+          query: { clienteId },
+        }),
+        contexto,
+        servicio
+      );
+
+      expect(respuesta.status).toBe(400);
+      expect(respuesta.jsonBody).toMatchObject({ code: "CLIENTE_REQUERIDO" });
+    }
+  );
+
+  it("normaliza espacios del cliente seleccionado por ADMIN", async () => {
+    const respuesta = await getMascotas(
+      crearRequest({
+        userId: ADMIN,
+        roles: ["authenticated", "ADMIN"],
+        query: { clienteId: `  ${CLIENTE_B}  ` },
+      }),
+      contexto,
+      servicio
+    );
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.jsonBody).toEqual([{ id: MASCOTA_B, nombre: "Max" }]);
+  });
+
   it("permite agendar usando el id listado y rechaza una mascota ajena", async () => {
     const listado = await getMascotas(
       crearRequest({ userId: CLIENTE_A }),

@@ -82,15 +82,15 @@ export class CitasService {
     clienteIdSolicitado?: string
   ): Mascota[] {
     if (usuario.rol === "ADMIN") {
-      if (!clienteIdSolicitado) {
+      const clienteId = clienteIdSolicitado?.trim();
+      if (!clienteId) {
         throw new DominioError(
           "CLIENTE_REQUERIDO",
           400,
           "El parámetro clienteId es obligatorio para ADMIN."
         );
       }
-      // SUPUESTO: el criterio de gestión del ADMIN está pendiente de confirmar con Rodrigo.
-      return this.catalogo.listarMascotasPorCliente(clienteIdSolicitado);
+      return this.catalogo.listarMascotasPorCliente(clienteId);
     }
 
     return this.catalogo.listarMascotasPorCliente(
