@@ -1,0 +1,129 @@
+name: Publicar frontend DEV - Veterinaria Patitas
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Publicar React en Static Web Apps DEV
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: dev
+      url: ${{ steps.swa.outputs.url }}
+    concurrency:
+      group: terraform-dev
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      TF_NAME_SUFFIX: ${{ vars.TF_NAME_SUFFIX }}
+      AZURE_CORE_OUTPUT: none
+    steps:
+      - name: Obtener codigo
+        uses: actions/checkout@v4
+
+      - name: Verificar configuracion DEV
+        shell: bash
+        run: |
+          set -euo pipefail
+          for key in AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID TF_NAME_SUFFIX; do
+            if [[ -z "${!key:-}" ]]; then
+              echo "::error::Falta configurar la variable del Environment dev: $key"
+              exit 1
+            fi
+          done
+          if [[ ! "$TF_NAME_SUFFIX" =~ ^[a-z0-9]{4,10}$ ]]; then
+            echo "::error::TF_NAME_SUFFIX debe tener entre 4 y 10 caracteres minusculos o digitos."
+            exit 1
+          fi
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Instalar dependencias reproducibles
+        run: npm ci --prefix apps/web --no-audit --no-fund
+
+      - name: Compilar y comprobar configuracion de rutas
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run build --prefix apps/web
+          test -f apps/web/dist/index.html
+          cmp apps/web/public/staticwebapp.config.json apps/web/dist/staticwebapp.config.json
+
+      - name: Autenticar en Azure mediante OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Obtener credencial de despliegue de la SWA DEV
+        id: swa
+        shell: bash
+        run: |
+          set -euo pipefail
+          patitas_swa_name="swa-patitas-dev-$TF_NAME_SUFFIX"
+          patitas_swa_host="$(az staticwebapp show \
+            --subscription "$AZURE_SUBSCRIPTION_ID" \
+            --resource-group rg-patitas-dev \
+            --name "$patitas_swa_name" \
+            --query defaultHostname --output tsv --only-show-errors)"
+          if [[ ! "$patitas_swa_host" =~ ^[a-z0-9.-]+\.azurestaticapps\.net$ ]]; then
+            echo "::error::Azure no devolvio un hostname valido para la SWA DEV esperada."
+            exit 1
+          fi
+
+          patitas_swa_token="$(az staticwebapp secrets list \
+            --subscription "$AZURE_SUBSCRIPTION_ID" \
+            --resource-group rg-patitas-dev \
+            --name "$patitas_swa_name" \
+            --query properties.apiKey --output tsv --only-show-errors)"
+          if [[ -z "$patitas_swa_token" || "$patitas_swa_token" == "null" || "$patitas_swa_token" == "None" || "$patitas_swa_token" == *$'\n'* || "$patitas_swa_token" == *$'\r'* ]]; then
+            echo "::error::Azure no devolvio una credencial de despliegue valida."
+            exit 1
+          fi
+          printf '::add-mask::%s\n' "$patitas_swa_token"
+          printf 'deployment_token=%s\n' "$patitas_swa_token" >> "$GITHUB_OUTPUT"
+          printf 'url=https://%s\n' "$patitas_swa_host" >> "$GITHUB_OUTPUT"
+          unset patitas_swa_token
+
+      # La Function externa sigue vinculada por Terraform. No enviar una API
+      # administrada ni crear previews: se publica el sitio principal de SWA DEV.
+      - name: Publicar artefacto del frontend
+        uses: Azure/static-web-apps-deploy@1a947af9992250f3bc2e68ad0754c0b0c11566c9 # v1
+        with:
+          azure_static_web_apps_api_token: ${{ steps.swa.outputs.deployment_token }}
+          action: upload
+          app_location: apps/web/dist
+          output_location: ''
+          api_location: ''
+          skip_app_build: true
+          skip_api_build: true
+          production_branch: main
+
+      - name: Comprobar pagina publicada
+        shell: bash
+        env:
+          PATITAS_WEB_URL: ${{ steps.swa.outputs.url }}
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --retry 5 --retry-delay 5 \
+            --connect-timeout 10 --max-time 30 "$PATITAS_WEB_URL/" --output /dev/null
+          {
+            printf '## Frontend DEV publicado\n\n'
+            printf 'Sitio: %s\n\n' "$PATITAS_WEB_URL"
+            printf 'Commit: `%s`\n\n' "$GITHUB_SHA"
+            printf 'La pagina respondio correctamente. La sesion, el backend y las operaciones de agenda requieren sus verificaciones propias.\n'
+          } >> "$GITHUB_STEP_SUMMARY"
