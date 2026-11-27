@@ -1,6 +1,6 @@
 /**
  * Tipos compatibles con el dominio del backend de Nicolás (PR #4)
- * y con las respuestas publicas previstas de los handlers HTTP (PR #6).
+ * y con las respuestas publicas de los handlers HTTP (PR #6 y PR #10).
  */
 export type EstadoCita = 'PROGRAMADA' | 'CANCELADA'
 
@@ -13,6 +13,11 @@ export interface Servicio {
   id: string
   nombre: string
   duracionMinutos: number
+}
+
+export interface Mascota {
+  id: string
+  nombre: string
 }
 
 export interface CrearCitaRequest {

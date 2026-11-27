@@ -2,7 +2,7 @@ name: CI - Veterinaria Patitas
 
 on:
   pull_request:
-    branches: [main]
+    # Incluye PR dependientes cuya base todavia no es main.
   push:
     branches: [main]
   workflow_dispatch:

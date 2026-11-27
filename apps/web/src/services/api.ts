@@ -3,6 +3,7 @@ import type {
   Cita,
   CrearCitaRequest,
   HealthResponse,
+  Mascota,
   Servicio,
   Veterinario,
 } from '../types/api'
@@ -72,6 +73,12 @@ export const patitasApi = {
   health: (signal?: AbortSignal) => request<HealthResponse>('/health', { signal }),
   veterinarios: (signal?: AbortSignal) => request<Veterinario[]>('/veterinarios', { signal }),
   servicios: (signal?: AbortSignal) => request<Servicio[]>('/servicios', { signal }),
+
+  // PR #10: CLIENTE consulta sus mascotas; ADMIN indica el cliente seleccionado.
+  // Estos metodos aun no se invocan automaticamente desde la interfaz.
+  mascotas: (signal?: AbortSignal) => request<Mascota[]>('/mascotas', { signal }),
+  mascotasDeCliente: (clienteId: string, signal?: AbortSignal) =>
+    request<Mascota[]>('/mascotas?' + new URLSearchParams({ clienteId: clienteId.trim() }), { signal }),
 
   // Backend PR #6: acceso solo tras validar la sesion y el acceso DIRECTO denegado.
   // No invocar desde la interfaz de produccion hasta cerrar la revision de seguridad.
