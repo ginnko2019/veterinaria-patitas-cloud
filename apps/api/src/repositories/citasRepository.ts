@@ -5,15 +5,16 @@ import { Cita } from "../domain/cita";
  * UTC canónicos; el futuro índice único SQL operará sobre ese valor.
  */
 export interface CitasRepository {
-  crear(cita: Cita): Cita;
-  listarPorCliente(clienteId: string): Cita[];
-  listarTodas(): Cita[];
-  obtenerPorId(id: string): Cita | undefined;
-  cancelar(id: string): Cita | undefined;
-  buscarActivaPorVeterinarioEInicio(
-    veterinarioId: string,
-    inicioUtc: string
-  ): Cita | undefined;
+  crear(cita: Cita): Promise<Cita>;
+  listarPorCliente(clienteId: string): Promise<Cita[]>;
+  listarTodas(): Promise<Cita[]>;
+  obtenerPorId(id: string): Promise<Cita | undefined>;
+  cancelar(id: string): Promise<Cita | undefined>;
+}
+
+export interface Cliente {
+  id: string;
+  identityId: string;
 }
 
 export interface Mascota {
@@ -34,11 +35,11 @@ export interface Servicio {
 }
 
 export interface CatalogoRepository {
-  listarVeterinarios(): Veterinario[];
-  listarServicios(): Servicio[];
-  // El repositorio de Azure SQL deberá implementar este método en otro PR.
-  listarMascotasPorCliente(clienteId: string): Mascota[];
-  obtenerMascota(id: string): Mascota | undefined;
-  obtenerVeterinario(id: string): Veterinario | undefined;
-  obtenerServicio(id: string): Servicio | undefined;
+  listarVeterinarios(): Promise<Veterinario[]>;
+  listarServicios(): Promise<Servicio[]>;
+  listarMascotasPorCliente(clienteId: string): Promise<Mascota[]>;
+  obtenerMascota(id: string): Promise<Mascota | undefined>;
+  obtenerVeterinario(id: string): Promise<Veterinario | undefined>;
+  obtenerServicio(id: string): Promise<Servicio | undefined>;
+  obtenerClientePorIdentidad(identityId: string): Promise<Cliente | undefined>;
 }

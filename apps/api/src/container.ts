@@ -1,29 +1,43 @@
 import { CitasService } from "./services/citasService";
 import {
+  CatalogoRepository,
+  CitasRepository,
+} from "./repositories/citasRepository";
+import {
   MemoriaCatalogoRepository,
   MemoriaCitasRepository,
 } from "./repositories/memoriaRepository";
+import { AzureSqlRepository } from "./repositories/azureSqlRepository";
 
-interface RepositoriosMemoria {
+interface Repositorios {
+  citas: CitasRepository;
+  catalogo: CatalogoRepository;
+}
+
+interface RepositoriosMemoria extends Repositorios {
   citas: MemoriaCitasRepository;
   catalogo: MemoriaCatalogoRepository;
 }
 
 let repositoriosMemoria: RepositoriosMemoria | undefined;
-let citasService: CitasService | undefined;
+let repositorioSql: AzureSqlRepository | undefined;
+let servicioCitas: CitasService | undefined;
+let citasDeServicio: CitasRepository | undefined;
+let catalogoDeServicio: CatalogoRepository | undefined;
+
+function persistenciaNoConfigurada(): never {
+  throw Object.assign(new Error("PERSISTENCIA_NO_CONFIGURADA"), {
+    code: "PERSISTENCIA_NO_CONFIGURADA",
+  });
+}
 
 function obtenerRepositoriosMemoria(): RepositoriosMemoria {
   const appEnv = process.env.APP_ENV;
-  // Un APP_ENV explicito de DEV/PROD no queda anulado por el runner de pruebas.
   const entornoLocal =
     appEnv === undefined
       ? process.env.NODE_ENV === "test"
       : appEnv === "local" || appEnv === "test";
-  if (process.env.PERSISTENCE !== "memory" || !entornoLocal) {
-    throw Object.assign(new Error("PERSISTENCIA_NO_CONFIGURADA"), {
-      code: "PERSISTENCIA_NO_CONFIGURADA",
-    });
-  }
+  if (!entornoLocal) return persistenciaNoConfigurada();
 
   if (!repositoriosMemoria) {
     repositoriosMemoria = {
@@ -34,15 +48,38 @@ function obtenerRepositoriosMemoria(): RepositoriosMemoria {
   return repositoriosMemoria;
 }
 
-export function obtenerServicioCitas(): CitasService {
-  const repositorios = obtenerRepositoriosMemoria();
-  if (!citasService) {
-    // TODO: conectar aquí el repositorio de Azure SQL en otro PR.
-    citasService = new CitasService(repositorios.citas, repositorios.catalogo);
+function obtenerRepositorios(): Repositorios {
+  switch (process.env.PERSISTENCE) {
+    case "memory":
+      return obtenerRepositoriosMemoria();
+    case "sql":
+      if (!process.env.SQL_SERVER?.trim() || !process.env.SQL_DATABASE?.trim()) {
+        return persistenciaNoConfigurada();
+      }
+      if (!repositorioSql) repositorioSql = new AzureSqlRepository();
+      return { citas: repositorioSql, catalogo: repositorioSql };
+    default:
+      return persistenciaNoConfigurada();
   }
-  return citasService;
 }
 
-export function obtenerRepositorioCatalogo(): MemoriaCatalogoRepository {
-  return obtenerRepositoriosMemoria().catalogo;
+export function obtenerServicioCitas(): CitasService {
+  const repositorios = obtenerRepositorios();
+  if (
+    !servicioCitas ||
+    citasDeServicio !== repositorios.citas ||
+    catalogoDeServicio !== repositorios.catalogo
+  ) {
+    servicioCitas = new CitasService(
+      repositorios.citas,
+      repositorios.catalogo
+    );
+    citasDeServicio = repositorios.citas;
+    catalogoDeServicio = repositorios.catalogo;
+  }
+  return servicioCitas;
+}
+
+export function obtenerRepositorioCatalogo(): CatalogoRepository {
+  return obtenerRepositorios().catalogo;
 }

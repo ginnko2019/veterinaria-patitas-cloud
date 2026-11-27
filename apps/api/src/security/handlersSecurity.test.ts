@@ -145,6 +145,33 @@ describe("seguridad de identidad y persistencia", () => {
     );
   });
 
+  it.each([
+    ["PERSISTENCE desconocido", "filesystem", undefined, undefined],
+    ["SQL sin servidor", "sql", undefined, "base-demo"],
+    ["SQL sin base", "sql", "servidor-demo", undefined],
+  ])("falla cerrado con %s", async (_, persistence, server, database) => {
+    vi.stubEnv("TRUST_SWA_PRINCIPAL", "true");
+    vi.stubEnv("PERSISTENCE", persistence);
+    vi.stubEnv("APP_ENV", "local");
+    vi.stubEnv("SQL_SERVER", server);
+    vi.stubEnv("SQL_DATABASE", database);
+
+    expect(() => obtenerServicioCitas()).toThrow("PERSISTENCIA_NO_CONFIGURADA");
+    const respuesta = await getCitas(requestAutenticado(), contexto);
+    expect(respuesta.status).toBe(500);
+    expect(respuesta.jsonBody).toEqual({
+      code: "ERROR_INTERNO",
+      message: "Ocurrió un error interno.",
+    });
+  });
+
+  it("construye SQL solo con servidor y base configurados", () => {
+    vi.stubEnv("PERSISTENCE", "sql");
+    vi.stubEnv("SQL_SERVER", "servidor-demo");
+    vi.stubEnv("SQL_DATABASE", "base-demo");
+    expect(() => obtenerServicioCitas()).not.toThrow();
+  });
+
   it.each(["prod", "dev"])("APP_ENV=%s impide memoria incluso con NODE_ENV=test", async (appEnv) => {
     vi.stubEnv("TRUST_SWA_PRINCIPAL", "true");
     vi.stubEnv("PERSISTENCE", "memory");

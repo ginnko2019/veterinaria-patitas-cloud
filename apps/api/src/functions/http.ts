@@ -25,6 +25,22 @@ export function respuestaNoAutenticado(): HttpResponseInit {
   );
 }
 
+function logErrorInesperado(error: unknown, context?: InvocationContext): void {
+  const campos =
+    typeof error === "object" && error !== null
+      ? (error as { name?: unknown; number?: unknown; code?: unknown })
+      : {};
+  const name = typeof campos.name === "string" ? campos.name : "Error";
+  const detalles = [`name=${name}`];
+  if (typeof campos.number === "number" || typeof campos.number === "string") {
+    detalles.push(`number=${campos.number}`);
+  }
+  if (typeof campos.code === "number" || typeof campos.code === "string") {
+    detalles.push(`code=${campos.code}`);
+  }
+  context?.error(`ERROR_INESPERADO ${detalles.join(" ")}`);
+}
+
 export function respuestaError(
   error: unknown,
   ruta: string,
@@ -62,7 +78,7 @@ export function respuestaError(
     );
   }
 
-  context?.error(`ERROR_INTERNO ${ruta}`);
+  logErrorInesperado(error, context);
   return respuestaErrorJson(
     "ERROR_INTERNO",
     "Ocurrió un error interno.",

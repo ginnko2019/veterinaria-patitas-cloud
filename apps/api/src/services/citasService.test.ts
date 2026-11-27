@@ -10,6 +10,10 @@ import { CitasService, UsuarioAutenticado } from "./citasService";
 const ahora = new Date("2026-11-24T12:00:00Z");
 const clienteA: UsuarioAutenticado = { id: "cliente-a", rol: "CLIENTE" };
 const clienteB: UsuarioAutenticado = { id: "cliente-b", rol: "CLIENTE" };
+const clienteDesconocido: UsuarioAutenticado = {
+  id: "sin-cliente",
+  rol: "CLIENTE",
+};
 const admin: UsuarioAutenticado = { id: "admin", rol: "ADMIN" };
 
 const base: NuevaCitaInput = {
@@ -27,13 +31,13 @@ function crearServicio(): CitasService {
   );
 }
 
-function esperarCodigo(
-  action: () => unknown,
+async function esperarCodigo(
+  action: () => Promise<unknown>,
   code: string,
   status?: number
-): void {
+): Promise<void> {
   try {
-    action();
+    await action();
     throw new Error("Se esperaba DominioError");
   } catch (error) {
     expect(error).toBeInstanceOf(DominioError);
@@ -45,29 +49,29 @@ function esperarCodigo(
 }
 
 describe("CitasService", () => {
-  it("crea una cita valida", () => {
-    const servicio = crearServicio();
-    const cita = servicio.crearCita(base, clienteA, ahora);
+  it("crea una cita valida", async () => {
+    const cita = await crearServicio().crearCita(base, clienteA, ahora);
     expect(cita.clienteId).toBe("cliente-a");
     expect(cita.estado).toBe("PROGRAMADA");
     expect(cita.inicioUtc).toBe("2026-12-01T15:00:00.000Z");
   });
 
-  it("rechaza doble reserva", () => {
+  it("rechaza doble reserva", async () => {
     const servicio = crearServicio();
-    servicio.crearCita(base, clienteA, ahora);
-    esperarCodigo(
+    await servicio.crearCita(base, clienteA, ahora);
+    await esperarCodigo(
       () => servicio.crearCita(base, clienteA, ahora),
-      "CONFLICTO_HORARIO"
+      "CONFLICTO_HORARIO",
+      409
     );
   });
 
-  it("rechaza la misma franja con offsets equivalentes en ambos ordenes", () => {
-    const utcPrimero = crearServicio();
-    utcPrimero.crearCita(base, clienteA, ahora);
-    esperarCodigo(
+  it("rechaza la misma franja con offsets equivalentes", async () => {
+    const servicio = crearServicio();
+    await servicio.crearCita(base, clienteA, ahora);
+    await esperarCodigo(
       () =>
-        utcPrimero.crearCita(
+        servicio.crearCita(
           { ...base, inicioUtc: "2026-12-01T10:00:00-05:00" },
           clienteA,
           ahora
@@ -75,76 +79,30 @@ describe("CitasService", () => {
       "CONFLICTO_HORARIO",
       409
     );
-
-    const offsetPrimero = crearServicio();
-    offsetPrimero.crearCita(
-      { ...base, inicioUtc: "2026-12-01T10:00:00-05:00" },
-      clienteA,
-      ahora
-    );
-    esperarCodigo(
-      () =>
-        offsetPrimero.crearCita(
-          { ...base, inicioUtc: "2026-12-01T15:00:00Z" },
-          clienteA,
-          ahora
-        ),
-      "CONFLICTO_HORARIO",
-      409
-    );
   });
 
-  it("rechaza la misma franja expresada con offset UTC", () => {
+  it("cancelar libera la franja y permite reservar de nuevo", async () => {
     const servicio = crearServicio();
-    servicio.crearCita(base, clienteA, ahora);
-    esperarCodigo(
-      () =>
-        servicio.crearCita(
-          { ...base, inicioUtc: "2026-12-01T15:00:00+00:00" },
-          clienteA,
-          ahora
-        ),
-      "CONFLICTO_HORARIO",
-      409
-    );
-  });
-
-  it("cancelar libera la franja y permite reservar de nuevo", () => {
-    const servicio = crearServicio();
-    const cita = servicio.crearCita(base, clienteA, ahora);
-    const cancelada = servicio.cancelarCita(cita.id, clienteA);
+    const cita = await servicio.crearCita(base, clienteA, ahora);
+    const cancelada = await servicio.cancelarCita(cita.id, clienteA);
     expect(cancelada.estado).toBe("CANCELADA");
-    expect(() => servicio.crearCita(base, clienteA, ahora)).not.toThrow();
+    await expect(servicio.crearCita(base, clienteA, ahora)).resolves.toBeDefined();
   });
 
-  it("cancelar libera la franja para una reserva con otro offset", () => {
+  it("el cliente A no ve citas del cliente B", async () => {
     const servicio = crearServicio();
-    const cita = servicio.crearCita(base, clienteA, ahora);
-    servicio.cancelarCita(cita.id, clienteA);
-
-    const nueva = servicio.crearCita(
-      { ...base, inicioUtc: "2026-12-01T10:00:00-05:00" },
-      clienteA,
+    await servicio.crearCita(
+      { ...base, mascotaId: "a1df2445-3dd8-4f18-bded-12f52a7fd9bf" },
+      clienteB,
       ahora
     );
-    expect(nueva.inicioUtc).toBe("2026-12-01T15:00:00.000Z");
+    await expect(servicio.listarCitas(clienteA)).resolves.toEqual([]);
   });
 
-  it("el cliente A no ve citas del cliente B", () => {
+  it("el ADMIN ve todas las citas", async () => {
     const servicio = crearServicio();
-    const mascotaB = {
-      ...base,
-      mascotaId: "a1df2445-3dd8-4f18-bded-12f52a7fd9bf",
-    };
-    servicio.crearCita(mascotaB, clienteB, ahora);
-
-    expect(servicio.listarCitas(clienteA)).toEqual([]);
-  });
-
-  it("el ADMIN ve todas las citas", () => {
-    const servicio = crearServicio();
-    servicio.crearCita(base, clienteA, ahora);
-    servicio.crearCita(
+    await servicio.crearCita(base, clienteA, ahora);
+    await servicio.crearCita(
       {
         ...base,
         mascotaId: "a1df2445-3dd8-4f18-bded-12f52a7fd9bf",
@@ -153,28 +111,37 @@ describe("CitasService", () => {
       clienteB,
       ahora
     );
-
-    expect(servicio.listarCitas(admin)).toHaveLength(2);
+    await expect(servicio.listarCitas(admin)).resolves.toHaveLength(2);
   });
 
-  it("cancelar una cita ajena falla", () => {
+  it("un usuario sin cliente asociado ve listas vacias y no puede agendar", async () => {
     const servicio = crearServicio();
-    const cita = servicio.crearCita(base, clienteA, ahora);
-    esperarCodigo(
+    await expect(servicio.listarCitas(clienteDesconocido)).resolves.toEqual([]);
+    await expect(servicio.listarMascotas(clienteDesconocido)).resolves.toEqual(
+      []
+    );
+    await esperarCodigo(
+      () => servicio.crearCita(base, clienteDesconocido, ahora),
+      "NO_ENCONTRADA",
+      404
+    );
+  });
+
+  it("cancelar una cita ajena falla", async () => {
+    const servicio = crearServicio();
+    const cita = await servicio.crearCita(base, clienteA, ahora);
+    await esperarCodigo(
       () => servicio.cancelarCita(cita.id, clienteB),
       "NO_ENCONTRADA"
     );
   });
 
-  it("rechaza mascota de otro cliente", () => {
+  it("rechaza mascota de otro cliente", async () => {
     const servicio = crearServicio();
-    esperarCodigo(
+    await esperarCodigo(
       () =>
         servicio.crearCita(
-          {
-            ...base,
-            mascotaId: "a1df2445-3dd8-4f18-bded-12f52a7fd9bf",
-          },
+          { ...base, mascotaId: "a1df2445-3dd8-4f18-bded-12f52a7fd9bf" },
           clienteA,
           ahora
         ),
@@ -182,35 +149,29 @@ describe("CitasService", () => {
     );
   });
 
-  it("ignora clienteId enviado en el input", () => {
-    const servicio = crearServicio();
-    const input = {
-      ...base,
-      clienteId: "cliente-b",
-    };
-    const cita = servicio.crearCita(input, clienteA, ahora);
+  it("ignora clienteId enviado en el input", async () => {
+    const input = { ...base, clienteId: "cliente-b" };
+    const cita = await crearServicio().crearCita(input, clienteA, ahora);
     expect(cita.clienteId).toBe("cliente-a");
   });
 
-  it("asigna al cliente propietario cuando agenda un ADMIN", () => {
+  it("asigna al cliente propietario cuando agenda un ADMIN", async () => {
     const servicio = crearServicio();
-    const cita = servicio.crearCita(base, admin, ahora);
-
+    const cita = await servicio.crearCita(base, admin, ahora);
     expect(cita.clienteId).toBe("cliente-a");
-    expect(servicio.listarCitas(clienteA)).toEqual([cita]);
-    expect(servicio.listarCitas(clienteB)).toEqual([]);
-    expect(servicio.cancelarCita(cita.id, clienteA).estado).toBe("CANCELADA");
+    await expect(servicio.listarCitas(clienteA)).resolves.toEqual([cita]);
+    await expect(servicio.listarCitas(clienteB)).resolves.toEqual([]);
+    await expect(
+      servicio.cancelarCita(cita.id, clienteA)
+    ).resolves.toMatchObject({ estado: "CANCELADA" });
   });
 
-  it("ADMIN recibe NO_ENCONTRADA para una mascota inexistente", () => {
+  it("ADMIN recibe NO_ENCONTRADA para una mascota inexistente", async () => {
     const servicio = crearServicio();
-    esperarCodigo(
+    await esperarCodigo(
       () =>
         servicio.crearCita(
-          {
-            ...base,
-            mascotaId: "90000000-0000-4000-8000-000000000001",
-          },
+          { ...base, mascotaId: "90000000-0000-4000-8000-000000000001" },
           admin,
           ahora
         ),

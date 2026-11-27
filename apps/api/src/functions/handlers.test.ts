@@ -177,16 +177,25 @@ describe("handlers HTTP", () => {
     }
   });
 
-  it("devuelve una lista vacía si el usuario no tiene mascotas asociadas", async () => {
-    vi.spyOn(catalogo, "listarMascotasPorCliente").mockReturnValue([]);
-    const respuesta = await getMascotas(
-      crearRequest({ userId: "cliente-sin-mascotas" }),
+  it("usuario sin cliente asociado ve listas vacias y no puede agendar", async () => {
+    const request = crearRequest({ userId: "cliente-sin-asociar" });
+    const mascotas = await getMascotas(request, contexto, servicio);
+    const citas = await getCitas(request, contexto, servicio);
+    const agenda = await postCita(
+      crearRequest({
+        userId: "cliente-sin-asociar",
+        body: input(),
+      }),
       contexto,
       servicio
     );
 
-    expect(respuesta.status).toBe(200);
-    expect(respuesta.jsonBody).toEqual([]);
+    expect(mascotas.status).toBe(200);
+    expect(mascotas.jsonBody).toEqual([]);
+    expect(citas.status).toBe(200);
+    expect(citas.jsonBody).toEqual([]);
+    expect(agenda.status).toBe(404);
+    expect(agenda.jsonBody).toMatchObject({ code: "NO_ENCONTRADA" });
   });
 
   it("requiere clienteId para ADMIN y lista las mascotas del cliente solicitado", async () => {
@@ -381,8 +390,8 @@ describe("handlers HTTP", () => {
     expect(siguienteReserva.status).toBe(201);
   });
 
-  it("oculta detalles de errores inesperados y registra solo código y ruta", async () => {
-    vi.spyOn(servicio, "listarCitas").mockImplementation(() => {
+  it("oculta detalles de errores inesperados y registra solo el nombre", async () => {
+    vi.spyOn(servicio, "listarCitas").mockImplementation(async () => {
       throw new Error("dato-personal-y-detalle-interno");
     });
 
@@ -400,6 +409,8 @@ describe("handlers HTTP", () => {
     expect(JSON.stringify(respuesta.jsonBody)).not.toContain(
       "dato-personal-y-detalle-interno"
     );
-    expect(contexto.error).toHaveBeenCalledWith("ERROR_INTERNO /api/citas");
+    expect(contexto.error).toHaveBeenCalledWith(
+      "ERROR_INESPERADO name=Error"
+    );
   });
 });

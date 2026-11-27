@@ -19,7 +19,10 @@ export async function getVeterinarios(
 
   try {
     const catalogoRepository = catalogo ?? obtenerRepositorioCatalogo();
-    return { status: 200, jsonBody: catalogoRepository.listarVeterinarios() };
+    return {
+      status: 200,
+      jsonBody: await catalogoRepository.listarVeterinarios(),
+    };
   } catch (error) {
     return respuestaError(error, "/api/veterinarios", context);
   }

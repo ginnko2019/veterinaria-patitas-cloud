@@ -19,43 +19,46 @@ export class CitasService {
     private catalogo: CatalogoRepository
   ) {}
 
-  private resolverClienteId(usuario: UsuarioAutenticado): string {
-    return usuario.id;
+  private async resolverClienteId(
+    usuario: UsuarioAutenticado
+  ): Promise<string | undefined> {
+    const cliente = await this.catalogo.obtenerClientePorIdentidad(usuario.id);
+    return cliente?.id;
   }
 
-  crearCita(
+  async crearCita(
     input: NuevaCitaInput,
     usuario: UsuarioAutenticado,
     ahora: Date = new Date()
-  ): Cita {
+  ): Promise<Cita> {
     const inicioUtc = canonicalizarInicioUtc(input.inicioUtc);
     const citaInput = { ...input, inicioUtc };
     validarCita(citaInput, ahora);
 
-    if (!this.catalogo.obtenerVeterinario(citaInput.veterinarioId)) {
-      throw new DominioError("NO_ENCONTRADA", 404);
-    }
-    if (!this.catalogo.obtenerServicio(citaInput.servicioId)) {
+    const clienteId =
+      usuario.rol === "CLIENTE"
+        ? await this.resolverClienteId(usuario)
+        : undefined;
+    if (usuario.rol === "CLIENTE" && !clienteId) {
       throw new DominioError("NO_ENCONTRADA", 404);
     }
 
-    const mascota = this.catalogo.obtenerMascota(citaInput.mascotaId);
+    if (!(await this.catalogo.obtenerVeterinario(citaInput.veterinarioId))) {
+      throw new DominioError("NO_ENCONTRADA", 404);
+    }
+    if (!(await this.catalogo.obtenerServicio(citaInput.servicioId))) {
+      throw new DominioError("NO_ENCONTRADA", 404);
+    }
+
+    const mascota = await this.catalogo.obtenerMascota(citaInput.mascotaId);
     if (!mascota) {
       throw new DominioError("NO_ENCONTRADA", 404);
     }
     if (
       usuario.rol === "CLIENTE" &&
-      mascota.clienteId !== this.resolverClienteId(usuario)
+      mascota.clienteId !== clienteId
     ) {
       throw new DominioError("NO_ENCONTRADA", 404);
-    }
-
-    const ocupada = this.citas.buscarActivaPorVeterinarioEInicio(
-      citaInput.veterinarioId,
-      inicioUtc
-    );
-    if (ocupada) {
-      throw new DominioError("CONFLICTO_HORARIO", 409);
     }
 
     return this.citas.crear({
@@ -70,17 +73,18 @@ export class CitasService {
     });
   }
 
-  listarCitas(usuario: UsuarioAutenticado): Cita[] {
+  async listarCitas(usuario: UsuarioAutenticado): Promise<Cita[]> {
     if (usuario.rol === "ADMIN") {
       return this.citas.listarTodas();
     }
-    return this.citas.listarPorCliente(this.resolverClienteId(usuario));
+    const clienteId = await this.resolverClienteId(usuario);
+    return clienteId ? this.citas.listarPorCliente(clienteId) : [];
   }
 
-  listarMascotas(
+  async listarMascotas(
     usuario: UsuarioAutenticado,
     clienteIdSolicitado?: string
-  ): Mascota[] {
+  ): Promise<Mascota[]> {
     if (usuario.rol === "ADMIN") {
       const clienteId = clienteIdSolicitado?.trim();
       if (!clienteId) {
@@ -93,25 +97,27 @@ export class CitasService {
       return this.catalogo.listarMascotasPorCliente(clienteId);
     }
 
-    return this.catalogo.listarMascotasPorCliente(
-      this.resolverClienteId(usuario)
-    );
+    const clienteId = await this.resolverClienteId(usuario);
+    return clienteId ? this.catalogo.listarMascotasPorCliente(clienteId) : [];
   }
 
-  cancelarCita(id: string, usuario: UsuarioAutenticado): Cita {
-    const cita = this.citas.obtenerPorId(id);
+  async cancelarCita(
+    id: string,
+    usuario: UsuarioAutenticado
+  ): Promise<Cita> {
+    const cita = await this.citas.obtenerPorId(id);
 
     if (!cita) {
       throw new DominioError("NO_ENCONTRADA", 404);
     }
-    if (
-      usuario.rol === "CLIENTE" &&
-      cita.clienteId !== this.resolverClienteId(usuario)
-    ) {
-      throw new DominioError("NO_ENCONTRADA", 404);
+    if (usuario.rol === "CLIENTE") {
+      const clienteId = await this.resolverClienteId(usuario);
+      if (!clienteId || cita.clienteId !== clienteId) {
+        throw new DominioError("NO_ENCONTRADA", 404);
+      }
     }
 
-    const cancelada = this.citas.cancelar(id);
+    const cancelada = await this.citas.cancelar(id);
     if (!cancelada) {
       throw new DominioError("NO_ENCONTRADA", 404);
     }

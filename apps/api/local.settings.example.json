@@ -3,8 +3,10 @@
   "Values": {
     "FUNCTIONS_WORKER_RUNTIME": "node",
     "AzureWebJobsStorage": "",
-    "TRUST_SWA_PRINCIPAL": "true",
+    "TRUST_SWA_PRINCIPAL": "false",
     "PERSISTENCE": "memory",
-    "APP_ENV": "local"
+    "APP_ENV": "local",
+    "SQL_SERVER": "your-server.database.windows.net",
+    "SQL_DATABASE": "your-database"
   }
 }
