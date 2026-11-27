@@ -6,7 +6,7 @@ data "azurerm_client_config" "current" {
 resource "azurerm_mssql_server" "dev" {
   count = var.sql_enabled ? 1 : 0
 
-  name                          = "sql-${local.prefix}-${var.name_suffix}"
+  name                          = local.sql_server_name
   resource_group_name           = azurerm_resource_group.patitas.name
   location                      = local.runtime_location
   version                       = "12.0"

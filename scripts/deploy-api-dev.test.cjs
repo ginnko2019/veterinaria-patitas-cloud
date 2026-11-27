@@ -25,7 +25,7 @@ function fixture(change = {}) {
   let settingsPath;
   let written;
   const settings = {
-    APP_ENV: 'dev', PERSISTENCE: 'sql', SQL_SERVER_FQDN: 'sql-patitas-dev-test1234.database.windows.net',
+    APP_ENV: 'dev', PERSISTENCE: 'sql', SQL_SERVER_FQDN: 'sql-patitas-dev-test1234-westcentralus.database.windows.net',
     SQL_DATABASE_NAME: 'patitas-dev', SQL_AUTH_MODE: 'managed-identity', TRUST_SWA_PRINCIPAL: 'false',
     FUNCTIONS_WORKER_RUNTIME: 'node',
     AzureWebJobsStorage: `DefaultEndpointsProtocol=https;AccountName=${config.storage};AccountKey=${syntheticKey};EndpointSuffix=core.windows.net`,

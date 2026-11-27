@@ -37,7 +37,7 @@ function readConfig(env = process.env) {
   return {
     subscription: env.AZURE_SUBSCRIPTION_ID, tenant: env.AZURE_TENANT_ID,
     group, groupId, app: `func-patitas-dev-${suffix}`, swa: `swa-patitas-dev-${suffix}`,
-    storage: `stpatdev${suffix}`, sqlServer: `sql-patitas-dev-${suffix}.database.windows.net`, sha: env.GITHUB_SHA,
+    storage: `stpatdev${suffix}`, sqlServer: `sql-patitas-dev-${suffix}-westcentralus.database.windows.net`, sha: env.GITHUB_SHA,
     blob: `${env.GITHUB_SHA}-${env.GITHUB_RUN_ID}-${env.GITHUB_RUN_ATTEMPT}.zip`,
   };
 }
