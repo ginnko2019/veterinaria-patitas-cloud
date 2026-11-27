@@ -37,6 +37,15 @@ run "sql_disabled_by_default" {
     condition     = output.sql_server_fqdn == null && output.sql_database_name == null
     error_message = "Los outputs SQL deben ser null cuando no existe la base de datos."
   }
+
+  assert {
+    condition = (
+      lookup(azurerm_linux_function_app.api.app_settings, "TRUST_SWA_PRINCIPAL", "") == "false" &&
+      lookup(azurerm_linux_function_app.api.app_settings, "APP_ENV", "") == var.environment &&
+      lookup(azurerm_linux_function_app.api.app_settings, "PERSISTENCE", "") != "memory"
+    )
+    error_message = "Azure debe conservar la confianza SWA apagada y su ambiente real, sin persistencia en memoria."
+  }
 }
 
 run "dev_sql_uses_entra_and_explicit_ips" {
@@ -120,6 +129,15 @@ run "dev_sql_uses_entra_and_explicit_ips" {
       azurerm_linux_function_app.api.identity[0].type == "SystemAssigned"
     )
     error_message = "La API debe recibir el servidor y la base SQL con autenticacion mediante identidad administrada."
+  }
+
+  assert {
+    condition = (
+      lookup(azurerm_linux_function_app.api.app_settings, "TRUST_SWA_PRINCIPAL", "") == "false" &&
+      lookup(azurerm_linux_function_app.api.app_settings, "APP_ENV", "") == var.environment &&
+      lookup(azurerm_linux_function_app.api.app_settings, "PERSISTENCE", "") != "memory"
+    )
+    error_message = "Crear SQL no debe activar confianza en cabeceras SWA ni habilitar memoria en Azure."
   }
 }
 

@@ -1,6 +1,6 @@
 # Azure SQL DEV — Veterinaria Patitas
 
-**Estado de este incremento:** preparación de infraestructura y acceso administrativo; **no desplegado ni ejecutado contra Azure SQL**. La API sigue en memoria. Nicolás implementará las migraciones y la persistencia SQL; los app settings no activan esa integración por sí solos.
+**Estado de este incremento:** preparación de infraestructura y acceso administrativo; **no desplegado ni ejecutado contra Azure SQL**. Con los controles del PR #6, la memoria solo está permitida en local/test; las operaciones de negocio en Azure quedan bloqueadas hasta implementar y configurar la persistencia SQL. Nicolás implementará las migraciones y el repositorio; los app settings no activan esa integración por sí solos.
 
 ## Contrato con la Function
 
@@ -13,6 +13,8 @@
 Son nombres propios de Patitas: Nicolás debe leerlos y configurar el driver. No son opciones que `mssql` interprete automáticamente. La conexión debe cifrarse y validar el certificado (`encrypt: true`, `trustServerCertificate: false`), con consultas parametrizadas y gestión del pool/token conforme al driver. No se requiere una contraseña SQL ni `AZURE_CLIENT_ID` para la identidad de sistema elegida. Véanse [node-mssql](https://tediousjs.github.io/node-mssql/) y la [guía de identidad administrada de Azure Functions](https://learn.microsoft.com/en-us/azure/azure-functions/functions-identity-access-azure-sql-with-managed-identity).
 
 La identidad **SWA** identifica al cliente y sus roles `CLIENTE`/`ADMIN`. La identidad **administrada de la Function** autentica a la aplicación ante SQL. El backend mantiene las comprobaciones de propiedad de mascotas y citas.
+
+El dominio actual utiliza el `userId` opaco de SWA como `usuario.id` y lo compara con `clienteId`. Si las migraciones introducen una clave interna distinta para el cliente, Nicolás debe resolver explícitamente `identity_id` de SWA hacia ese cliente y adaptar el repositorio/servicio sin mezclar ambos identificadores. El client/application ID del bootstrap SQL identifica a la Function, no a los clientes de negocio. Este mapeo sigue pendiente de la implementación SQL.
 
 ## Activación en DEV
 
@@ -31,6 +33,8 @@ La identidad **SWA** identifica al cliente y sus roles `CLIENTE`/`ADMIN`. La ide
    El lote crea `patitas-api-dev` y el rol `patitas_api_runtime`, y concede `SELECT`, `INSERT` y `UPDATE` sobre `dbo`. Es una propuesta DEV para el CRUD actual. Puede repetirse con la misma identidad; se detiene si el usuario existente tiene otro SID/tipo. No concede `DELETE`, DDL ni `db_owner`, y **no revoca permisos previos**: los permisos heredados o concedidos por otros procedimientos requieren revisión aparte.
 4. **Aplicar las migraciones de Nicolás** con una identidad administrativa/de migración independiente, desde `database/migrations/` cuando él las incorpore. El usuario de runtime no administra el esquema. Este incremento no crea tablas ni datos.
 5. **Conectar y probar con la identidad de la Function:** Nicolás implementa el repositorio SQL y adapta el servicio a `async/await`. Verificar conexión, aislamiento entre clientes, reserva concurrente con conflicto `409`, cancelación y conservación de los datos tras reiniciar. El bootstrap exitoso no demuestra estas pruebas. No sustituir un fallo SQL por persistencia en memoria en el despliegue.
+
+La confianza en los principales SWA permanece apagada hasta verificar AuthV2 y el acceso directo, además de la persistencia. Seguir el [procedimiento de activación de infraestructura](../infra/terraform/README.md#4-seguridad-obligatoria-antes-de-publicar-citas); la creación del usuario SQL no autoriza activar ese flag.
 
 ## Reglas que deben conservar las migraciones
 

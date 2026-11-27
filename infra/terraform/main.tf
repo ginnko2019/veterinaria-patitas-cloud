@@ -80,7 +80,11 @@ resource "azurerm_linux_function_app" "api" {
   }
 
   app_settings = merge(
-    { "FUNCTIONS_WORKER_RUNTIME" = "node" },
+    {
+      "FUNCTIONS_WORKER_RUNTIME" = "node"
+      "TRUST_SWA_PRINCIPAL"      = "false"
+      "APP_ENV"                  = var.environment
+    },
     var.sql_enabled ? {
       "SQL_SERVER_FQDN"   = azurerm_mssql_server.dev[0].fully_qualified_domain_name
       "SQL_DATABASE_NAME" = azurerm_mssql_database.dev[0].name

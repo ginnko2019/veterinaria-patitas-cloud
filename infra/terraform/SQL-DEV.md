@@ -2,7 +2,7 @@
 
 ## Estado y alcance
 
-Este incremento prepara el servidor y la base `patitas-dev` mediante Terraform. **Código publicado no significa base creada:** falta aplicar el plan en una sesión autorizada de Azure y comprobar la conexión. El backend actual sigue usando memoria; añadir las variables SQL no lo convierte automáticamente en un repositorio persistente.
+Este incremento prepara el servidor y la base `patitas-dev` mediante Terraform. **Código publicado no significa base creada:** falta aplicar el plan en una sesión autorizada de Azure y comprobar la conexión. Con los controles del PR #6, la memoria solo está habilitada en local/test; las operaciones de negocio en Azure quedan bloqueadas hasta implementar y configurar la persistencia SQL. Añadir las variables SQL no activa un repositorio persistente.
 
 La elección de Basic se limita a desarrollo: 5 DTU, máximo 2 GB, cifrado TDE y retención de restauración a un punto en el tiempo de 7 días. El respaldo es local; no ofrece restauración geográfica. El costo regional, la capacidad y los objetivos de recuperación del ADR-002 siguen pendientes de validación real. PROD no acepta `sql_enabled=true` en este incremento.
 
@@ -75,11 +75,15 @@ Terraform agrega a la Function estas variables únicamente cuando SQL está habi
 
 Son el contrato de conexión de Patitas; el código actual aún no las consume. La identidad administrada de sistema de la Function se autentica ante SQL. El usuario de SWA sigue determinando quién puede consultar o cancelar cada cita dentro del backend.
 
+Nicolás debe conservar el enlace explícito entre `userId` de SWA, la columna `identity_id` prevista y cualquier clave interna de cliente. El dominio actual compara la identidad SWA con `clienteId`; devolver una clave SQL diferente exige adaptar ese mapeo antes de comprobar la propiedad de mascotas y citas. El client/application ID utilizado en el bootstrap identifica a la Function y no reemplaza la identidad de un cliente.
+
 Los outputs `sql_server_fqdn`, `sql_database_name`, `function_identity_principal_id`, `function_outbound_ip_addresses` y `function_possible_outbound_ip_addresses` facilitan la configuración sin exponer credenciales. Los outputs SQL no tienen valor cuando SQL está deshabilitado.
 
 La activación del usuario y rol SQL está separada del aprovisionamiento. Seguir [database/README.md](../../database/README.md) y ejecutar `database/bootstrap/runtime-user-dev.sql` como administrador Entra en la base correcta. Nicolás conserva la implementación de `database/migrations/`, consultas parametrizadas, conexión con identidad administrada, `async/await` y control de reservas concurrentes.
 
 Antes de afirmar que la persistencia funciona, comprobar una conexión desde la Function, una escritura/lectura duradera, aislamiento entre clientes, cancelación y rechazo de doble reserva. Verificar también que la identidad de ejecución no puede modificar el esquema ni eliminar citas. Registrar la restauración de un respaldo antes de declarar cumplidos RPO/RTO.
+
+Mantener `TRUST_SWA_PRINCIPAL="false"` hasta cumplir el [procedimiento de activación de AuthV2](README.md#4-seguridad-obligatoria-antes-de-publicar-citas) y las pruebas de persistencia. No configurar `APP_ENV=local/test` ni `PERSISTENCE=memory` en la Function de Azure para evitar este bloqueo.
 
 ## Referencias de implementación
 
