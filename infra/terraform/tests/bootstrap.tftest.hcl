@@ -90,3 +90,23 @@ run "reject_invalid_runtime_location" {
 
   expect_failures = [var.runtime_location]
 }
+
+run "trust_swa_only_dev" {
+  command = plan
+  variables {
+    trust_swa_principal = true
+  }
+  assert {
+    condition = azurerm_linux_function_app.api.app_settings["TRUST_SWA_PRINCIPAL"] == "true"
+    error_message = "El ambiente DEV debe entregar el valor string true solo con activacion explicita."
+  }
+}
+
+run "reject_swa_trust_in_prod" {
+  command = plan
+  variables {
+    environment = "prod"
+    trust_swa_principal = true
+  }
+  expect_failures = [var.trust_swa_principal]
+}
