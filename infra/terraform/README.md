@@ -2,7 +2,7 @@
 
 Este directorio declara la **primera capa cloud** mediante Terraform: Resource Group, Azure Storage para el runtime, App Service Plan Linux Consumption, Azure Functions Node.js 22, Application Insights/Log Analytics y Static Web Apps Standard con una Function vinculada como backend.
 
-**Alcance actual:** infraestructura y asociación SWA/Functions, con Azure SQL opcional **solo para DEV**. SQL permanece deshabilitado hasta configurar su administrador Entra y habilitarlo expresamente. El [PR #11](https://github.com/ginnko2019/veterinaria-patitas-cloud/pull/11) ya implementa el repositorio SQL y la migración inicial de la API; su integración, publicación y pruebas reales en Azure están pendientes. Terraform no publica las aplicaciones ni ejecuta las migraciones; tampoco acredita un despliegue real.
+**Alcance actual:** infraestructura y asociación SWA/Functions, con Azure SQL opcional **solo para DEV**. SQL permanece deshabilitado hasta configurar su administrador Entra y habilitarlo expresamente. Los PR [#6](https://github.com/ginnko2019/veterinaria-patitas-cloud/pull/6), [#10](https://github.com/ginnko2019/veterinaria-patitas-cloud/pull/10) y [#11](https://github.com/ginnko2019/veterinaria-patitas-cloud/pull/11) ya están integrados en `main`: incluyen los handlers y controles de identidad, la consulta de mascotas y el repositorio SQL con su migración inicial. El aprovisionamiento, la publicación de las aplicaciones, la ejecución de migraciones y las pruebas reales en Azure siguen pendientes. Terraform no publica las aplicaciones ni ejecuta las migraciones; tampoco acredita un despliegue real.
 
 Para preparar la base DEV y la conexión de Nicolás, seguir [SQL-DEV.md](SQL-DEV.md).
 
@@ -88,13 +88,13 @@ La integración `azurerm_static_web_app_function_app_registration` asocia Azure 
 
 La asociación SWA administra `auth_settings_v2`; la Function utiliza `lifecycle.ignore_changes = [auth_settings_v2]` para preservar esa configuración en aplicaciones posteriores de Terraform, siguiendo el [ejemplo oficial de AzureRM](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/static_web_app_function_app_registration). Cuando exista el entorno, revisar un segundo `terraform plan` y repetir la prueba de acceso directo. Microsoft describe la protección del backend vinculado en [Bring your own functions to Azure Static Web Apps](https://learn.microsoft.com/en-us/azure/static-web-apps/functions-bring-your-own).
 
-Terraform declara `TRUST_SWA_PRINCIPAL="false"` y `APP_ENV=dev/prod`. El backend del PR #6 rechaza los principales SWA mientras la confianza esté apagada. La memoria queda limitada a desarrollo local y pruebas. Cuando `sql_enabled=true`, Terraform configura `PERSISTENCE="sql"` junto con el servidor, la base y el modo de autenticación para la API del PR #11; con SQL apagado, omite los cuatro settings. Seleccionar SQL no publica esa API, no ejecuta migraciones ni acredita su conexión. Las operaciones de negocio permanecen bloqueadas hasta completar la integración, configuración y verificación necesarias.
+Terraform declara `TRUST_SWA_PRINCIPAL="false"` y `APP_ENV=dev/prod`. El backend integrado desde el PR #6 rechaza los principales SWA mientras la confianza esté apagada. La memoria queda limitada a desarrollo local y pruebas. Cuando `sql_enabled=true`, Terraform configura `PERSISTENCE="sql"` junto con el servidor, la base y el modo de autenticación que ya consume la API integrada desde el PR #11; con SQL apagado, omite los cuatro settings. Seleccionar SQL no publica esa API, no ejecuta migraciones ni acredita su conexión. Las operaciones de negocio permanecen bloqueadas hasta completar el despliegue, la configuración y las verificaciones necesarias.
 
 La activación requiere evidencia del entorno real, en este orden:
 
 1. Conservar la confianza apagada al crear los recursos y publicar los artefactos. Inspeccionar en Azure que AuthV2 está habilitado, exige autenticación y utiliza el proveedor vinculado a la SWA correcta. La protección es de autenticación de plataforma; no sustituirla por restricciones IP que impidan la asociación SWA.
 2. Comprobar que `/api/health` responde `200` con `{"status":"ok","service":"patitas-api"}` a través de esa SWA y que el mismo endpoint, accedido directamente a la Function sin identidad o con un principal falsificado, responde `401`/`403`. El rechazo de una ruta privada con el flag apagado no demuestra por sí solo el bloqueo de plataforma.
-3. Con el incremento de seguridad del PR #6 disponible, ejecutar desde la raíz del repositorio la comprobación estricta contra ambas URL reales, incluyendo `/api`:
+3. Ejecutar desde la raíz del repositorio la comprobación estricta incorporada por el PR #6 contra ambas URL reales, incluyendo `/api`:
 
    ```bash
    FUNCTION_DIRECT_URL='https://<functionapp>.azurewebsites.net/api' \
@@ -105,12 +105,12 @@ La activación requiere evidencia del entorno real, en este orden:
    Una URL ausente, un error de red, un `404` o una prueba omitida no acreditan el aislamiento. Conservar el resultado junto con la configuración AuthV2 inspeccionada.
 4. Completar y probar SQL, migraciones, permisos de ejecución y persistencia; después, cambiar `TRUST_SWA_PRINCIPAL` a `"true"` mediante un cambio revisado en Terraform. Repetir la comprobación de acceso directo con la confianza activa y verificar una sesión legítima a través de SWA, incluidos roles y propiedad de mascotas/citas.
 
-Un cambio manual del flag en el portal se revertiría en el siguiente `terraform apply`; la activación debe quedar en la configuración versionada. Los detalles del helper, los roles y las pruebas se mantienen en [la guía de identidad](../../docs/seguridad-identidad.md), incorporada por el PR #6, todavía pendiente de integración con esta rama. **No habilitar citas reales antes de completar estas verificaciones.**
+Un cambio manual del flag en el portal se revertiría en el siguiente `terraform apply`; la activación debe quedar en la configuración versionada. Los detalles del helper, los roles y las pruebas se mantienen en [la guía de identidad](../../docs/seguridad-identidad.md), integrada desde el PR #6. **No habilitar citas reales antes de completar estas verificaciones.**
 
 ## 5. Pendientes para completar la rúbrica
 
-- Aprovisionamiento real y acceso de SQL DEV (Rodrigo); integrar y publicar la API del PR #11, aplicar sus migraciones y ejecutar las pruebas de persistencia y concurrencia en Azure (Nicolás).
-- Autenticación, asignación de roles, pruebas directas de acceso seguro (PR #6).
+- Aprovisionamiento real y acceso de SQL DEV (Rodrigo); publicar la API integrada, aplicar sus migraciones y ejecutar las pruebas de persistencia y concurrencia en Azure (Nicolás).
+- Validación de autenticación en el entorno desplegado, asignación de roles y ejecución de las pruebas directas de acceso seguro incorporadas por el PR #6.
 - Pipeline que **publique el artefacto compilado** React/Functions en Azure, con smoke tests y rollback.
 - Alerta de observabilidad y prueba de falla/recuperación.
 - Estimación de costos oficial con escenarios DEV, MVP y producción (Excel).

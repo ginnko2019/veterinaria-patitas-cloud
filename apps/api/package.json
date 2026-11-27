@@ -9,12 +9,20 @@
     "clean": "rimraf dist",
     "prestart": "npm run clean && npm run build",
     "start": "func start",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:seguridad": "vitest run src/security",
+    "test:seguridad:azure": "node scripts/test-seguridad-azure.cjs",
+    "test:sql:azure": "node scripts/test-sql-azure.cjs",
+    "preseed:cliente:dev": "npm run build",
+    "seed:cliente:dev": "node scripts/seed-cliente-dev.cjs"
   },
   "dependencies": {
-    "@azure/functions": "^4.0.0"
+    "@azure/functions": "^4.0.0",
+    "@azure/identity": "^4.14.1",
+    "mssql": "^12.8.1"
   },
   "devDependencies": {
+    "@types/mssql": "^12.3.1",
     "@types/node": "18.x",
     "rimraf": "^5.0.0",
     "typescript": "^5.0.0",

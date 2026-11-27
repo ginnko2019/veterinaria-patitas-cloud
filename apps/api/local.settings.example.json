@@ -1,0 +1,13 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "FUNCTIONS_WORKER_RUNTIME": "node",
+    "AzureWebJobsStorage": "",
+    "TRUST_SWA_PRINCIPAL": "false",
+    "PERSISTENCE": "memory",
+    "APP_ENV": "local",
+    "SQL_SERVER_FQDN": "your-server.database.windows.net",
+    "SQL_DATABASE_NAME": "patitas-dev",
+    "SQL_AUTH_MODE": "managed-identity"
+  }
+}

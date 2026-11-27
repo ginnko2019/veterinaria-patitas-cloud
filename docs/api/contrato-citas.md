@@ -1,14 +1,14 @@
 # Contrato de integración — Veterinaria Patitas
 
-**Estado:** contrato compartido de los incrementos en revisión: API (#6), sesión del frontend (#8) y mascotas (#10).
+**Estado:** contrato de integración de API (#6), sesión del frontend (#8), mascotas (#10) y persistencia SQL (#11).
 
-**Versión:** 0.2 (MVP PEMU 2026)
+**Versión:** 0.3 (MVP PEMU 2026)
 
 **Frontend:** React + TypeScript (`apps/web`)
 
 **Backend:** Azure Functions + TypeScript (`apps/api`)
 
-Este documento alinea las ramas de trabajo; no acredita un despliegue en Azure ni una base de datos operativa. El endpoint de mascotas se incorpora en el PR #10, que depende del #6. Todo cambio de ruta, campo o permiso debe actualizar este contrato y su consumidor.
+Este documento describe el código integrado en `main` mediante los PR #6, #8, #10 y #11; no acredita un despliegue en Azure ni una base de datos operativa. Todo cambio de ruta, campo o permiso debe actualizar este contrato y su consumidor.
 
 ## 1. Transporte e identidad
 
@@ -24,7 +24,7 @@ Este documento alinea las ramas de trabajo; no acredita un despliegue en Azure n
 
 - JSON con propiedades en `camelCase`; las listas son arreglos, sin envoltorio `{data:[...]}`.
 - Los identificadores de cita, mascota, veterinario y servicio son UUID expresados como cadenas.
-- El `userId` de SWA y el `clienteId` usado actualmente para filtrar son cadenas opacas; no se exige que sean UUID. El repositorio SQL deberá resolver explícitamente `identity_id → cliente` si introduce un identificador interno distinto.
+- El `userId` de SWA es una identidad opaca y puede no ser un UUID. El backend resuelve `userId → dbo.Clientes.identity_id → Clientes.id`; no crea clientes automáticamente. En SQL el `clienteId` interno es UUID y nunca sustituye a la identidad de sesión. La consulta de mascotas por ADMIN selecciona ese identificador interno; el frontend conserva su tipo `string`.
 - Fechas ISO 8601 en UTC. La API normaliza `inicioUtc`; la interfaz mostrará la zona `America/Bogota`.
 - `motivo` es opcional. La respuesta pública de una cita no incluye `clienteId`.
 
@@ -150,13 +150,13 @@ El código interno `CONFLICTO_HORARIO` se convierte a `HORARIO_OCUPADO` en HTTP:
 }
 ```
 
-Cancelar cambia el estado a `CANCELADA`; no borra el registro. La implementación en memoria comprueba coincidencia de veterinario e inicio. Al incorporar SQL se debe garantizar la exclusión de reservas concurrentes y revisar solapamientos según la duración del servicio; React no puede garantizar esa regla.
+Cancelar cambia el estado a `CANCELADA`; no borra el registro. La implementación en memoria comprueba coincidencia de veterinario e inicio. La migración SQL define un índice único filtrado para impedir reservas activas con el mismo veterinario e inicio. Su ejecución y la concurrencia deben comprobarse en DEV; los solapamientos según la duración del servicio siguen requiriendo revisión. React no puede garantizar esa regla.
 
 ## 6. Estado de integración y pendientes
 
 1. **Autenticación:** mecanismo SWA acordado en el código. La protección real del vínculo y las sesiones debe comprobarse en Azure antes de habilitar la confianza.
-2. **Persistencia:** la memoria requiere `PERSISTENCE=memory` y entorno local/test. Un `APP_ENV=dev` o `prod` explícito no permite memoria. En Azure las operaciones de negocio permanecen bloqueadas hasta incorporar el repositorio SQL.
-3. **SQL DEV:** el PR #9 prepara infraestructura y bootstrap de identidad. Quedan la creación/verificación del recurso, las migraciones, el repositorio, el mapeo de identidad y las pruebas de persistencia.
+2. **Persistencia:** la memoria requiere `PERSISTENCE=memory` y entorno local/test. Un `APP_ENV=dev` o `prod` explícito no permite memoria. SQL requiere `PERSISTENCE=sql`, `SQL_SERVER_FQDN`, `SQL_DATABASE_NAME` y `SQL_AUTH_MODE=managed-identity`. La conexión usa Microsoft Entra; la [guía de base de datos](../../database/README.md) distingue la identidad de la Function, las credenciales de desarrollo/pruebas y los permisos de cada una.
+3. **SQL DEV:** la migración versionada, repositorio, mapeo de identidad y pruebas están en este incremento. La creación/verificación del recurso, despliegue de la migración y validación de la identidad administrada siguen dependiendo del entorno DEV.
 4. **Frontend:** el PR #8 prepara sesión y cliente HTTP. El flujo completo de agenda se habilitará al integrar y verificar API, identidad y persistencia.
 5. **Prueba de integración:** verificar salud, catálogos, mascotas por usuario, creación, consulta, conflicto 409, cancelación y rechazo de acceso directo. Las pruebas unitarias no sustituyen la comprobación del despliegue.
 6. **Reglas pendientes:** horario definitivo de atención y catálogo real. No presentar datos sintéticos como registros persistidos ni horarios provisionales como decisiones finales.

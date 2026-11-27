@@ -6,7 +6,9 @@
     "rootDir": ".",
     "sourceMap": true,
     "strict": false,
-    "esModuleInterop": true
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "types": ["node"]
   },
   "exclude": ["node_modules", "dist", "src/**/*.test.ts"]
 }
