@@ -1,0 +1,114 @@
+name: Infraestructura Terraform - Veterinaria Patitas
+
+on:
+  pull_request:
+    paths:
+      - 'infra/terraform/**'
+      - '.github/workflows/terraform.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'infra/terraform/**'
+      - '.github/workflows/terraform.yml'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Ambiente de despliegue
+        type: choice
+        options: [dev, prod]
+        required: true
+      operation:
+        description: Planificar o aplicar cambios en Azure
+        type: choice
+        options: [plan, apply]
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Formato y validacion de Terraform
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validar expresiones y scripts de GitHub Actions
+        uses: docker://rhysd/actionlint:1.7.12
+        with:
+          args: -color .github/workflows/terraform.yml
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '1.10.5'
+      - name: Comprobar formato
+        run: terraform -chdir=infra/terraform fmt -check -recursive
+      - name: Descargar proveedores sin inicializar estado remoto
+        run: terraform -chdir=infra/terraform init -backend=false -input=false -lockfile=readonly
+      - name: Validar HCL y esquema de recursos
+        run: terraform -chdir=infra/terraform validate -no-color
+
+  deploy:
+    name: ${{ inputs.operation }} ${{ inputs.environment }}
+    if: github.event_name == 'workflow_dispatch'
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    # Configurar dev y prod en Settings > Environments.
+    # Requerir aprobacion de otro integrante antes de prod/apply.
+    environment: ${{ inputs.environment }}
+    concurrency:
+      group: terraform-${{ inputs.environment }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      ARM_USE_OIDC: 'true'
+      ARM_USE_AZUREAD: 'true'
+      ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      TF_STATE_RG: ${{ vars.TF_STATE_RG }}
+      TF_STATE_STORAGE: ${{ vars.TF_STATE_STORAGE }}
+      TF_STATE_CONTAINER: ${{ vars.TF_STATE_CONTAINER }}
+      TF_NAME_SUFFIX: ${{ vars.TF_NAME_SUFFIX }}
+      DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '1.10.5'
+
+      - name: Verificar configuracion de Azure y estado
+        shell: bash
+        run: |
+          set -euo pipefail
+          for key in ARM_CLIENT_ID ARM_TENANT_ID ARM_SUBSCRIPTION_ID TF_STATE_RG TF_STATE_STORAGE TF_STATE_CONTAINER TF_NAME_SUFFIX; do
+            if [ -z "${!key:-}" ]; then
+              echo "::error::Falta configurar variable de entorno GitHub $key"
+              exit 1
+            fi
+          done
+
+      - name: Inicializar estado remoto con OIDC
+        run: |
+          terraform -chdir=infra/terraform init -input=false -lockfile=readonly \
+            -backend-config="resource_group_name=$TF_STATE_RG" \
+            -backend-config="storage_account_name=$TF_STATE_STORAGE" \
+            -backend-config="container_name=$TF_STATE_CONTAINER" \
+            -backend-config="key=patitas-$DEPLOY_ENVIRONMENT.tfstate"
+
+      - name: Calcular plan de infraestructura
+        run: |
+          terraform -chdir=infra/terraform plan -input=false -no-color \
+            -var-file="environments/$DEPLOY_ENVIRONMENT.tfvars" \
+            -var="name_suffix=$TF_NAME_SUFFIX" \
+            -out=tfplan
+
+      - name: Aplicar plan guardado
+        if: inputs.operation == 'apply'
+        run: terraform -chdir=infra/terraform apply -input=false -auto-approve tfplan
+
+      - name: Mostrar salidas no sensibles
+        if: inputs.operation == 'apply'
+        run: terraform -chdir=infra/terraform output
