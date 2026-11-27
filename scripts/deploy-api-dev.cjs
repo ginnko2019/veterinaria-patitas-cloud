@@ -110,13 +110,19 @@ async function deploy(config, zipPath, options = {}) {
   const account = az(['account', 'show']);
   requireThat(account.id === config.subscription && account.tenantId === config.tenant && account.state === 'Enabled', 'Sesion Azure distinta del tenant/suscripcion DEV habilitada.');
   const app = az(['functionapp', 'show', ...appArgs]);
-  requireThat(sameId(app.id, appId) && app.reserved === true && app.kind?.includes('functionapp') &&
+  const appArm = az(['rest', '--method', 'get', '--url', `https://management.azure.com${appId}?api-version=2024-11-01`]);
+  requireThat(sameId(appArm.id, appId) && appArm.properties?.reserved === true &&
+    sameId(appArm.properties?.serverFarmId, `${config.groupId}/providers/Microsoft.Web/serverfarms/asp-patitas-dev`),
+  'Azure ARM no confirmo la Function Linux ni el plan esperado.');
+  requireThat(sameId(app.id, appId) && app.kind?.includes('functionapp') &&
     app.tags?.proyecto === 'veterinaria-patitas' && app.tags?.ambiente === 'dev' && GUID.test(app.identity?.principalId || ''),
   'Function inexistente, ajena o incompatible; no se publica.');
   const planId = `${config.groupId}/providers/Microsoft.Web/serverfarms/asp-patitas-dev`;
   requireThat(sameId(app.serverFarmId, planId), 'El plan de la Function no corresponde a DEV.');
-  const plan = az(['appservice', 'plan', 'show', '--ids', planId]);
-  requireThat(plan.sku?.name === 'Y1' && plan.reserved === true, 'Este publicador solo admite Linux Consumption Y1.');
+  const plan = az(['rest', '--method', 'get', '--url', `https://management.azure.com${planId}?api-version=2024-11-01`]);
+  requireThat(sameId(plan.id, planId) && plan.sku?.name === 'Y1' && plan.properties?.reserved === true &&
+    plan.properties?.provisioningState === 'Succeeded',
+  'Azure ARM no confirmo un plan Linux Consumption Y1 aprovisionado correctamente.');
   const runtime = az(['functionapp', 'config', 'show', ...appArgs, '--query', 'linuxFxVersion']);
   requireThat(runtime === 'NODE|22', 'El runtime debe ser Node 22.');
   const settings = settingsMap(az(['functionapp', 'config', 'appsettings', 'list', ...appArgs]));

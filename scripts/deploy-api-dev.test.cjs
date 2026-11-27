@@ -36,13 +36,28 @@ function fixture(change = {}) {
     const command = args.slice(0, 4).join(' ');
     if (args[0] === 'account') return { id: config.subscription, tenantId: config.tenant, state: 'Enabled' };
     if (args[0] === 'functionapp' && args[1] === 'show') return {
-      id: `${config.groupId}/providers/Microsoft.Web/sites/${config.app}`, reserved: true, kind: 'functionapp,linux',
+      id: `${config.groupId}/providers/Microsoft.Web/sites/${config.app}`, reserved: null, kind: 'functionapp,linux',
       tags: { proyecto: 'veterinaria-patitas', ambiente: 'dev' },
       identity: { principalId: '44444444-4444-4444-4444-444444444444' },
       serverFarmId: `${config.groupId}/providers/Microsoft.Web/serverfarms/asp-patitas-dev`,
       defaultHostName: change.functionHostname ?? `${config.app}.azurewebsites.net`,
     };
-    if (args[0] === 'appservice') return { sku: { name: change.sku || 'Y1' }, reserved: true };
+    if (args[0] === 'rest' && args[1] === '--method' && args[2] === 'get') {
+      const url = args[args.indexOf('--url') + 1];
+      if (url.includes('/serverfarms/')) return {
+        id: `${config.groupId}/providers/Microsoft.Web/serverfarms/asp-patitas-dev`,
+        sku: { name: change.sku || 'Y1' },
+        properties: { reserved: change.planLinux ?? true, provisioningState: change.planState || 'Succeeded' },
+      };
+      if (url.includes('/sites/')) return {
+        id: `${config.groupId}/providers/Microsoft.Web/sites/${config.app}`,
+        properties: {
+          reserved: change.appLinux ?? true,
+          serverFarmId: change.appPlanId ?? `${config.groupId}/providers/Microsoft.Web/serverfarms/asp-patitas-dev`,
+        },
+      };
+      throw new Error('ARM recurso inesperado en prueba');
+    }
     if (command.startsWith('functionapp config show')) return 'NODE|22';
     if (command === 'functionapp config appsettings list') {
       return Object.entries({ ...settings, ...written }).map(([name, value]) => ({ name, value }));
@@ -132,6 +147,10 @@ test('publica solo el setting de paquete, SAS lectura/HTTPS 30 dias y resultados
 
 for (const [name, change, error] of [
   ['plan distinto', { sku: 'EP1' }, /Y1/],
+  ['plan Windows informado por ARM', { planLinux: false }, /Linux Consumption/],
+  ['plan ARM sin estado Succeeded', { planState: 'Failed' }, /aprovisionado/],
+  ['Function Windows informada por ARM', { appLinux: false }, /Function Linux/],
+  ['Function apuntando a otro plan ARM', { appPlanId: '/subscriptions/other/resourceGroups/other/providers/Microsoft.Web/serverfarms/other' }, /plan esperado/],
   ['servidor SQL ajeno', { settings: { SQL_SERVER_FQDN: 'otro-servidor.database.windows.net' } }, /SQL DEV/],
   ['contenedor publico', { publicAccess: 'Blob' }, /privado/],
 ]) {
@@ -191,5 +210,14 @@ test('un SAS con escritura no cambia la Function', async () => {
 test('sync fallido agota tres intentos y falla; no declara despliegue verificado', async () => {
   const f = fixture({ syncFails: true });
   await assert.rejects(() => deploy(config, '/tmp/synthetic-package.zip', f.options), /SyncFailed/);
-  assert.equal(f.calls.filter(call => call.args[0] === 'rest').length, 3);
+  assert.equal(f.calls.filter(call => call.args[0] === 'rest' && call.args[2] === 'post').length, 3);
+});
+
+test('verifica Linux Y1 consultando ARM aunque Azure CLI no exponga reserved', async () => {
+  const f = fixture();
+  await deploy(config, '/tmp/synthetic-package.zip', f.options);
+  const queries = f.calls.filter(call => call.args[0] === 'rest' && call.args[2] === 'get');
+  assert.equal(queries.length, 2);
+  assert.ok(queries.some(call => call.args.some(arg => arg.includes('/serverfarms/asp-patitas-dev?api-version=2024-11-01'))));
+  assert.ok(queries.some(call => call.args.some(arg => arg.includes('/sites/func-patitas-dev-test1234?api-version=2024-11-01'))));
 });
