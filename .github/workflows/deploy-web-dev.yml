@@ -80,7 +80,13 @@ jobs:
             --resource-group rg-patitas-dev \
             --name "$patitas_swa_name" \
             --query defaultHostname --output tsv --only-show-errors)"
-          if [[ ! "$patitas_swa_host" =~ ^[a-z0-9.-]+\.azurestaticapps\.net$ ]]; then
+          # Azure puede incluir una etiqueta de particion, por ejemplo .2.
+          # El origen procede de la SWA DEV fijada arriba; admitir solo DNS bajo
+          # el sufijo exacto impide aceptar otra autoridad, rutas o credenciales.
+          patitas_swa_host="${patitas_swa_host,,}"
+          patitas_dns_label='[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?'
+          patitas_swa_pattern="^${patitas_dns_label}(\.${patitas_dns_label})*\.azurestaticapps\.net$"
+          if [[ ${#patitas_swa_host} -gt 253 || ! "$patitas_swa_host" =~ $patitas_swa_pattern ]]; then
             echo "::error::Azure no devolvio un hostname valido para la SWA DEV esperada."
             exit 1
           fi
@@ -124,6 +130,6 @@ jobs:
           {
             printf '## Frontend DEV publicado\n\n'
             printf 'Sitio: %s\n\n' "$PATITAS_WEB_URL"
-            printf 'Commit: `%s`\n\n' "$GITHUB_SHA"
+            printf 'Commit: %s\n\n' "$GITHUB_SHA"
             printf 'La pagina respondio correctamente. La sesion, el backend y las operaciones de agenda requieren sus verificaciones propias.\n'
           } >> "$GITHUB_STEP_SUMMARY"
