@@ -46,6 +46,8 @@ jobs:
         run: terraform -chdir=infra/terraform init -backend=false -input=false -lockfile=readonly
       - name: Validar HCL y esquema de recursos
         run: terraform -chdir=infra/terraform validate -no-color
+      - name: Probar configuracion SQL sin crear recursos en Azure
+        run: terraform -chdir=infra/terraform test -no-color
 
   deploy:
     name: ${{ inputs.operation }} ${{ inputs.environment }}
@@ -73,6 +75,10 @@ jobs:
       TF_STATE_CONTAINER: ${{ vars.TF_STATE_CONTAINER }}
       TF_NAME_SUFFIX: ${{ vars.TF_NAME_SUFFIX }}
       DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
+      TF_VAR_sql_enabled: ${{ vars.SQL_ENABLED || 'false' }}
+      TF_VAR_sql_entra_admin_name: ${{ vars.SQL_ENTRA_ADMIN_NAME }}
+      TF_VAR_sql_entra_admin_object_id: ${{ vars.SQL_ENTRA_ADMIN_OBJECT_ID }}
+      TF_VAR_sql_firewall_ipv4: ${{ vars.SQL_FIREWALL_IPV4 || '{}' }}
     steps:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v3

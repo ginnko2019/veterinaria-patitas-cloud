@@ -1,0 +1,9 @@
+# Copiar a sql-dev.tfvars.local y reemplazar los dos valores del administrador.
+# Este archivo no se carga automaticamente. Solo se permite environment=dev.
+sql_enabled              = true
+sql_entra_admin_name     = "REEMPLAZAR_POR_USUARIO_O_GRUPO_ENTRA"
+sql_entra_admin_object_id = "00000000-0000-0000-0000-000000000000"
+
+# Inicialmente SQL no admite conexiones de clientes. Agregar solo las IPv4
+# actuales y revisadas de la Function y, temporalmente, del administrador.
+sql_firewall_ipv4 = {}

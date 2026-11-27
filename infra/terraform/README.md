@@ -2,14 +2,19 @@
 
 Este directorio declara la **primera capa cloud** mediante Terraform: Resource Group, Azure Storage para el runtime, App Service Plan Linux Consumption, Azure Functions Node.js 22, Application Insights/Log Analytics y Static Web Apps Standard con una Function vinculada como backend.
 
-**Alcance actual:** infraestructura y asociación SWA/Functions; **no** instala aún las aplicaciones, la base de datos Azure SQL ni las identidades de negocio. No confundir esta versión con el MVP final desplegado.
+**Alcance actual:** infraestructura y asociación SWA/Functions, con Azure SQL opcional **solo para DEV**. SQL permanece deshabilitado hasta configurar su administrador Entra y habilitarlo expresamente. El [PR #11](https://github.com/ginnko2019/veterinaria-patitas-cloud/pull/11) ya implementa el repositorio SQL y la migración inicial de la API; su integración, publicación y pruebas reales en Azure están pendientes. Terraform no publica las aplicaciones ni ejecuta las migraciones; tampoco acredita un despliegue real.
+
+Para preparar la base DEV y la conexión de Nicolás, seguir [SQL-DEV.md](SQL-DEV.md).
 
 ## Estructura
+
 - `versions.tf`: proveedor AzureRM 4.x y estado remoto.
 - `.terraform.lock.hcl`: versión y sumas de verificación del proveedor; se versiona y el pipeline lo utiliza sin modificarlo.
 - `variables.tf`: variables y validaciones.
 - `main.tf`: recursos declarativos.
 - `outputs.tf`: nombres y URL sin credenciales.
+- `sql.tf`, `sql-variables.tf` y `sql-outputs.tf`: servidor/base DEV, acceso de red y configuración de conexión sin contraseñas.
+- `tests/sql.tftest.hcl`: planes con un proveedor simulado; no crea recursos en Azure.
 - `environments/dev.tfvars` y `environments/prod.tfvars`: parámetros de ambiente.
 - `.github/workflows/terraform.yml`: validación y plan/apply desde GitHub Actions.
 
@@ -36,13 +41,26 @@ Como el estado remoto y la identidad que ejecutará Terraform deben existir ante
 
 **Nunca guardar valores sensibles en el repositorio ni usar access keys como secretos de GitHub.** El backend Terraform utiliza OIDC y RBAC. El estado sí puede contener claves técnicas sensibles de los recursos que administra; restringir lectura y escritura y protegerlo mediante Storage cifrado.
 
+### Confirmar el subject OIDC antes de crear la credencial federada
+
+GitHub utiliza sujetos inmutables para repositorios creados desde el 15 de julio de 2026. Este repositorio fue creado el 12 de noviembre de 2026; los identificadores públicos verificados son owner `53383580` y repository `1454648615`. Con la plantilla predeterminada y los Environments del workflow, los valores **esperados** son:
+
+| Environment | Subject esperado |
+| --- | --- |
+| `dev` | `repo:ginnko2019@53383580/veterinaria-patitas-cloud@1454648615:environment:dev` |
+| `prod` | `repo:ginnko2019@53383580/veterinaria-patitas-cloud@1454648615:environment:prod` |
+
+Estos valores no acreditan que se haya verificado el token o la personalización OIDC del repositorio. Antes de crear cada credencial federada, comprobar en la configuración o vista previa de GitHub el subject real del Environment y cualquier plantilla personalizada. La credencial debe coincidir exactamente con ese valor, con issuer `https://token.actions.githubusercontent.com` y audience `api://AzureADTokenExchange`. No utilizar automáticamente el formato antiguo basado solo en nombres. Consultar la [referencia OIDC de GitHub](https://docs.github.com/en/actions/reference/security/oidc) y la [guía de Microsoft sobre sujetos inmutables](https://learn.microsoft.com/en-us/entra/workload-id/workload-identities-github-immutable-subjects).
+
 ## 2. Comprobación automática
 
 Cada Pull Request que cambie `infra/terraform/**` dispara:
+
 - `actionlint` para comprobar las expresiones y los scripts del workflow.
 - `terraform fmt -check -recursive`
 - `terraform init -backend=false -lockfile=readonly` (no necesita acceso Azure)
 - `terraform validate`
+- `terraform test` con proveedor simulado: SQL opcional, configuración DEV y rechazos de PROD, firewall abierto o administrador ausente.
 
 Estas comprobaciones **no prueban** permisos, disponibilidad regional ni costos. Es necesario ejecutar `plan` contra la suscripción antes de afirmar que el despliegue funciona.
 
@@ -70,7 +88,7 @@ La integración `azurerm_static_web_app_function_app_registration` asocia Azure 
 
 La asociación SWA administra `auth_settings_v2`; la Function utiliza `lifecycle.ignore_changes = [auth_settings_v2]` para preservar esa configuración en aplicaciones posteriores de Terraform, siguiendo el [ejemplo oficial de AzureRM](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/static_web_app_function_app_registration). Cuando exista el entorno, revisar un segundo `terraform plan` y repetir la prueba de acceso directo. Microsoft describe la protección del backend vinculado en [Bring your own functions to Azure Static Web Apps](https://learn.microsoft.com/en-us/azure/static-web-apps/functions-bring-your-own).
 
-Terraform declara `TRUST_SWA_PRINCIPAL="false"` y `APP_ENV=dev/prod`. El backend del PR #6 rechaza los principales SWA mientras la confianza esté apagada. No se configura `PERSISTENCE=memory`: la memoria queda limitada a desarrollo local y pruebas; en Azure, las operaciones de negocio permanecen bloqueadas hasta implementar y configurar la persistencia SQL. Crear la base o añadir sus variables no activa un repositorio SQL.
+Terraform declara `TRUST_SWA_PRINCIPAL="false"` y `APP_ENV=dev/prod`. El backend del PR #6 rechaza los principales SWA mientras la confianza esté apagada. La memoria queda limitada a desarrollo local y pruebas. Cuando `sql_enabled=true`, Terraform configura `PERSISTENCE="sql"` junto con el servidor, la base y el modo de autenticación para la API del PR #11; con SQL apagado, omite los cuatro settings. Seleccionar SQL no publica esa API, no ejecuta migraciones ni acredita su conexión. Las operaciones de negocio permanecen bloqueadas hasta completar la integración, configuración y verificación necesarias.
 
 La activación requiere evidencia del entorno real, en este orden:
 
@@ -91,7 +109,7 @@ Un cambio manual del flag en el portal se revertiría en el siguiente `terraform
 
 ## 5. Pendientes para completar la rúbrica
 
-- Persistencia en Azure SQL y migraciones de base de datos (Nicolás + Rodrigo).
+- Aprovisionamiento real y acceso de SQL DEV (Rodrigo); integrar y publicar la API del PR #11, aplicar sus migraciones y ejecutar las pruebas de persistencia y concurrencia en Azure (Nicolás).
 - Autenticación, asignación de roles, pruebas directas de acceso seguro (PR #6).
 - Pipeline que **publique el artefacto compilado** React/Functions en Azure, con smoke tests y rollback.
 - Alerta de observabilidad y prueba de falla/recuperación.
