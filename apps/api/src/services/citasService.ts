@@ -5,6 +5,7 @@ import { validarCita } from "../domain/validarCita";
 import {
   CatalogoRepository,
   CitasRepository,
+  Mascota,
 } from "../repositories/citasRepository";
 
 export interface UsuarioAutenticado {
@@ -17,6 +18,10 @@ export class CitasService {
     private citas: CitasRepository,
     private catalogo: CatalogoRepository
   ) {}
+
+  private resolverClienteId(usuario: UsuarioAutenticado): string {
+    return usuario.id;
+  }
 
   crearCita(
     input: NuevaCitaInput,
@@ -38,7 +43,10 @@ export class CitasService {
     if (!mascota) {
       throw new DominioError("NO_ENCONTRADA", 404);
     }
-    if (usuario.rol === "CLIENTE" && mascota.clienteId !== usuario.id) {
+    if (
+      usuario.rol === "CLIENTE" &&
+      mascota.clienteId !== this.resolverClienteId(usuario)
+    ) {
       throw new DominioError("NO_ENCONTRADA", 404);
     }
 
@@ -66,7 +74,28 @@ export class CitasService {
     if (usuario.rol === "ADMIN") {
       return this.citas.listarTodas();
     }
-    return this.citas.listarPorCliente(usuario.id);
+    return this.citas.listarPorCliente(this.resolverClienteId(usuario));
+  }
+
+  listarMascotas(
+    usuario: UsuarioAutenticado,
+    clienteIdSolicitado?: string
+  ): Mascota[] {
+    if (usuario.rol === "ADMIN") {
+      const clienteId = clienteIdSolicitado?.trim();
+      if (!clienteId) {
+        throw new DominioError(
+          "CLIENTE_REQUERIDO",
+          400,
+          "El parámetro clienteId es obligatorio para ADMIN."
+        );
+      }
+      return this.catalogo.listarMascotasPorCliente(clienteId);
+    }
+
+    return this.catalogo.listarMascotasPorCliente(
+      this.resolverClienteId(usuario)
+    );
   }
 
   cancelarCita(id: string, usuario: UsuarioAutenticado): Cita {
@@ -75,7 +104,10 @@ export class CitasService {
     if (!cita) {
       throw new DominioError("NO_ENCONTRADA", 404);
     }
-    if (usuario.rol === "CLIENTE" && cita.clienteId !== usuario.id) {
+    if (
+      usuario.rol === "CLIENTE" &&
+      cita.clienteId !== this.resolverClienteId(usuario)
+    ) {
       throw new DominioError("NO_ENCONTRADA", 404);
     }
 

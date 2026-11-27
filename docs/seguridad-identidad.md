@@ -56,8 +56,8 @@ comprobaciones que deben aprobar en el mismo despliegue:
    exactamente `{"status":"ok","service":"patitas-api"}`. Esto evita interpretar
    una aplicación inexistente o una página HTML como evidencia de integración.
 2. **Rutas directas negadas:** la Function debe responder `401` o `403` a health
-   sin identidad y con un principal ADMIN fabricado, y a los catálogos y las
-   operaciones de citas con ese principal. Health es público en el código y no
+   sin identidad y con un principal ADMIN fabricado, y a los catálogos, mascotas
+   y operaciones de citas con ese principal. Health es público en el código y no
    consulta `TRUST_SWA_PRINCIPAL`: si sigue abierto directamente, la prueba falla
    aunque el flag apagado haga que las citas respondan `401`.
 
@@ -84,8 +84,9 @@ Las regresiones del helper usan mocks y se ejecutan sin recursos de Azure.
 Cada sonda tiene un timeout HTTP de 10 segundos y un límite de prueba de 15
 segundos. No sigue redirecciones. Un `404`, una redirección, una respuesta `2xx`
 directa o un fallo DNS/TLS/red/timeout son fallos, no pruebas de denegación.
-Las rutas están en `DIRECT_PROBES`, dentro de `azureAccessChecks.ts`, para añadir
-los endpoints nuevos, incluido mascotas cuando se integre su PR.
+Las rutas están en `DIRECT_PROBES`, dentro de `azureAccessChecks.ts`, e incluyen
+mascotas con un cliente ficticio indicado por el principal ADMIN fabricado.
+Al añadir endpoints privados, ampliar también esas sondas.
 
 El pipeline de despliegue debe bloquearse si el comando estricto falla. La
 evidencia real sigue pendiente: las pruebas con mocks y la CI sin URLs no

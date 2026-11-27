@@ -30,6 +30,7 @@ export const DIRECT_PROBES: readonly DirectProbe[] = [
   { name: "health con ADMIN falsificado", method: "GET", path: "health", forgedPrincipal: true },
   { name: "catalogo de veterinarios", method: "GET", path: "veterinarios", forgedPrincipal: true },
   { name: "catalogo de servicios", method: "GET", path: "servicios", forgedPrincipal: true },
+  { name: "consulta de mascotas", method: "GET", path: "mascotas?clienteId=usuario-inventado", forgedPrincipal: true },
   { name: "consulta de citas", method: "GET", path: "citas", forgedPrincipal: true },
   {
     name: "creacion de citas", method: "POST", path: "citas", forgedPrincipal: true,
