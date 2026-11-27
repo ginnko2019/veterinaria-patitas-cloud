@@ -8,7 +8,7 @@
 
 **Backend:** Azure Functions + TypeScript (`apps/api`)
 
-Este documento alinea las ramas de trabajo; no acredita un despliegue en Azure ni una base de datos operativa. El endpoint de mascotas se incorpora en el PR #10, que depende del #6. Todo cambio de ruta, campo o permiso debe actualizar este contrato y su consumidor.
+Este documento describe el código integrado en `main` mediante los PR #6, #8, #10 y #11; no acredita un despliegue en Azure ni una base de datos operativa. Todo cambio de ruta, campo o permiso debe actualizar este contrato y su consumidor.
 
 ## 1. Transporte e identidad
 
@@ -150,7 +150,7 @@ El código interno `CONFLICTO_HORARIO` se convierte a `HORARIO_OCUPADO` en HTTP:
 }
 ```
 
-Cancelar cambia el estado a `CANCELADA`; no borra el registro. La implementación en memoria comprueba coincidencia de veterinario e inicio. Al incorporar SQL se debe garantizar la exclusión de reservas concurrentes y revisar solapamientos según la duración del servicio; React no puede garantizar esa regla.
+Cancelar cambia el estado a `CANCELADA`; no borra el registro. La implementación en memoria comprueba coincidencia de veterinario e inicio. La migración SQL define un índice único filtrado para impedir reservas activas con el mismo veterinario e inicio. Su ejecución y la concurrencia deben comprobarse en DEV; los solapamientos según la duración del servicio siguen requiriendo revisión. React no puede garantizar esa regla.
 
 ## 6. Estado de integración y pendientes
 
