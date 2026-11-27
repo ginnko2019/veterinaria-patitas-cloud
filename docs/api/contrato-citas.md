@@ -1,38 +1,51 @@
-# Contrato de integración de citas — Veterinaria Patitas
+# Contrato de integración — Veterinaria Patitas
 
-**Estado:** propuesta compartida para validación de Rodrigo y Nicolás.  
-**Versión:** 0.1 (MVP PEMU 2026)  
-**Frontend:** React + TypeScript (`apps/web`)  
+**Estado:** contrato compartido de los incrementos en revisión: API (#6), sesión del frontend (#8) y mascotas (#10).
+
+**Versión:** 0.2 (MVP PEMU 2026)
+
+**Frontend:** React + TypeScript (`apps/web`)
+
 **Backend:** Azure Functions + TypeScript (`apps/api`)
 
-Este contrato parte del **Manual de implementación de Nicolás**, entregado para el proyecto. No declara que los endpoints ya estén implementados. Si se modifica una ruta o un campo, se debe actualizar este archivo en el mismo Pull Request que cambie la API y revisar el frontend.
+Este documento alinea las ramas de trabajo; no acredita un despliegue en Azure ni una base de datos operativa. El endpoint de mascotas se incorpora en el PR #10, que depende del #6. Todo cambio de ruta, campo o permiso debe actualizar este contrato y su consumidor.
 
-## 1. Convenciones
+## 1. Transporte e identidad
 
-- Prefijo HTTP de Azure Functions: `/api`.
-- URL local sugerida para el backend: `http://localhost:7071/api`; en el frontend la variable `VITE_API_BASE_URL` contendrá la URL **incluido el sufijo /api**.
-- Formato: JSON, con nombres de propiedades en `camelCase`.
-- Identificadores: UUID expresados como cadenas.
-- Tiempos: formato ISO 8601 en UTC (por ejemplo, `2026-11-19T15:00:00Z`). La interfaz mostrará la zona `America/Bogota`.
-- La identidad del cliente **no se envía como campo confiable** en una petición de reserva: se obtiene y valida en el backend mediante un mecanismo de autenticación acordado por el equipo.
-- Citas personales: sin exponerlas públicamente antes de implementar autenticación y autorización en servidor.
+- Prefijo HTTP: `/api`.
+- En producción, el navegador llama a la ruta relativa `/api` del mismo origen de Azure Static Web Apps (SWA), con su sesión. El cliente HTTP usa `credentials: 'same-origin'`.
+- Para desarrollo, `VITE_API_BASE_URL` puede señalar una API local e incluye el sufijo `/api`. La sesión de SWA requiere el proxy/emulador o un entorno integrado; abrir Vite y Functions por separado no crea esa sesión.
+- SWA autentica al usuario e incorpora `x-ms-client-principal` al reenviar la petición. El frontend consulta `/.auth/me` para presentar la sesión; no construye ese encabezado ni envía un Bearer como mecanismo de este contrato.
+- Functions interpreta el principal solo con `TRUST_SWA_PRINCIPAL=true`. Antes de activarlo en Azure se debe verificar la asociación SWA–Functions, AuthV2 y el rechazo de acceso directo, siguiendo [seguridad de identidad](../seguridad-identidad.md).
+- Los roles de negocio son `CLIENTE` y `ADMIN`. El backend exige el rol de plataforma `authenticated`: si además aparece `ADMIN` (mayúsculas), concede ese rol; en caso contrario trata al usuario autenticado como `CLIENTE`. `anonymous` y `authenticated` son roles de plataforma, no nuevos roles de negocio.
+- La autorización y la pertenencia de mascotas/citas se comprueban en el backend. Un `clienteId` enviado por el navegador no sustituye la identidad de sesión.
 
-## 2. Endpoints del MVP
+## 2. Convenciones de datos
 
-| Método | Ruta | Función | Resultado esperado |
+- JSON con propiedades en `camelCase`; las listas son arreglos, sin envoltorio `{data:[...]}`.
+- Los identificadores de cita, mascota, veterinario y servicio son UUID expresados como cadenas.
+- El `userId` de SWA y el `clienteId` usado actualmente para filtrar son cadenas opacas; no se exige que sean UUID. El repositorio SQL deberá resolver explícitamente `identity_id → cliente` si introduce un identificador interno distinto.
+- Fechas ISO 8601 en UTC. La API normaliza `inicioUtc`; la interfaz mostrará la zona `America/Bogota`.
+- `motivo` es opcional. La respuesta pública de una cita no incluye `clienteId`.
+
+## 3. Endpoints
+
+| Método | Ruta | Permiso y alcance | Respuesta |
 | --- | --- | --- | --- |
-| GET | `/api/health` | Salud del servicio | `200`: `{"status":"ok","service":"patitas-api"}` |
-| GET | `/api/veterinarios` | Catálogo de veterinarios | `200`: arreglo JSON |
-| GET | `/api/servicios` | Catálogo de servicios | `200`: arreglo JSON |
-| POST | `/api/citas` | Crear cita propia | `201`: cita creada |
-| GET | `/api/citas` | Consultar citas según identidad/rol | `200`: arreglo JSON |
-| PATCH | `/api/citas/{id}/cancelar` | Cancelar cita autorizada | `200`: cita actualizada |
+| GET | `/api/health` | Público a través de SWA | `200`: `{"status":"ok","service":"patitas-api"}` |
+| GET | `/api/veterinarios` | Usuario autenticado | `200`: `Veterinario[]` |
+| GET | `/api/servicios` | Usuario autenticado | `200`: `Servicio[]` |
+| GET | `/api/mascotas` | CLIENTE: solo mascotas propias | `200`: `Mascota[]` |
+| GET | `/api/mascotas?clienteId=...` | ADMIN: cliente seleccionado explícitamente | `200`: `Mascota[]` |
+| POST | `/api/citas` | CLIENTE: mascota propia; ADMIN: mascota seleccionada | `201`: `Cita` |
+| GET | `/api/citas` | CLIENTE: propias; ADMIN: todas | `200`: `Cita[]` |
+| PATCH | `/api/citas/{id}/cancelar` | CLIENTE: propia; ADMIN: cualquiera | `200`: `Cita` cancelada |
 
-Las listas se devuelven como **arreglos**, no como objetos `{data:[...]}`, salvo que ambos integrantes acuerden formalmente otra versión.
+Para mascotas, un CLIENTE ignora cualquier `clienteId` de la query y siempre recibe sus propios datos. Un ADMIN debe indicar un valor no vacío, tras quitar espacios de los extremos; de lo contrario recibe `400 CLIENTE_REQUERIDO`. Si no hay mascotas para el cliente autorizado/seleccionado, la respuesta es `[]`. Solo se exponen `id` y `nombre`.
 
-## 3. Tipos de datos propuestos
+El cliente del frontend prepara `patitasApi.mascotas()` y `patitasApi.mascotasDeCliente(clienteId)`. La futura pantalla de administración debe seleccionar un cliente válido antes de listar sus mascotas; no necesita pedir al usuario que escriba UUID manualmente.
 
-Estas propiedades deben confirmarse en revisión antes de consumirlas desde React.
+## 4. Tipos públicos
 
 ```typescript
 export type EstadoCita = 'PROGRAMADA' | 'CANCELADA';
@@ -48,12 +61,17 @@ export interface Servicio {
   duracionMinutos: number;
 }
 
+export interface Mascota {
+  id: string;
+  nombre: string;
+}
+
 export interface CrearCitaRequest {
   mascotaId: string;
   veterinarioId: string;
   servicioId: string;
   inicioUtc: string;
-  motivo: string;
+  motivo?: string;
 }
 
 export interface Cita {
@@ -62,7 +80,7 @@ export interface Cita {
   veterinarioId: string;
   servicioId: string;
   inicioUtc: string;
-  motivo: string;
+  motivo?: string;
   estado: EstadoCita;
 }
 
@@ -72,14 +90,28 @@ export interface ApiError {
 }
 ```
 
-La estructura de `Cita` es el **mínimo previsto** para la pantalla de agenda; el backend podrá incorporar campos adicionales que no expongan información de terceros. Los campos `nombre` y `duracionMinutos` de los catálogos también son propuestas a revisar.
+### Ejemplo: mascotas propias
+
+```http
+GET /api/mascotas
+```
+
+El navegador adjunta automáticamente la cookie de sesión del mismo origen.
+
+```json
+[
+  {
+    "id": "2c73eae2-d6f2-4f38-aeb8-82cb722f9328",
+    "nombre": "Luna"
+  }
+]
+```
 
 ### Ejemplo: registrar una cita
 
 ```http
 POST /api/citas
 Content-Type: application/json
-Authorization: Bearer <token-autorizado>
 ```
 
 ```json
@@ -87,14 +119,29 @@ Authorization: Bearer <token-autorizado>
   "mascotaId": "2c73eae2-d6f2-4f38-aeb8-82cb722f9328",
   "veterinarioId": "6baec109-23fc-4715-9154-9ab1a86f436f",
   "servicioId": "5b442a3a-8a08-4760-82d9-97e67971c7bf",
-  "inicioUtc": "2026-11-23T15:00:00Z",
+  "inicioUtc": "2030-12-03T15:00:00Z",
   "motivo": "Consulta general"
 }
 ```
 
-El esquema de autenticación mostrado es **ilustrativo**, no una decisión implementada: el equipo debe acordar el proveedor de identidad y cómo Azure Functions valida los tokens. El frontend no debe asumir que una `Function Key` constituye autenticación de usuarios.
+El backend determina el propietario a partir de la mascota autorizada. El cuerpo no necesita `clienteId`.
 
-### Ejemplo: error de horario ocupado
+## 5. Validaciones y errores
+
+| Situación | HTTP | Código o comportamiento |
+| --- | --- | --- |
+| JSON malformado | 400 | `JSON_INVALIDO` |
+| Solicitud o UUID de recurso inválido | 400 | Error de validación |
+| ADMIN sin `clienteId` válido para listar mascotas | 400 | `CLIENTE_REQUERIDO` |
+| Sesión ausente, principal inválido o confianza desactivada | 401 | `NO_AUTENTICADO` en el handler |
+| Recurso inexistente o cita/mascota ajena a un CLIENTE | 404 | `NO_ENCONTRADA` |
+| Veterinario ya reservado en el mismo inicio | 409 | `HORARIO_OCUPADO` |
+| Regla de negocio incumplida, por ejemplo fecha pasada | 422 | Error de dominio |
+| Error inesperado o persistencia sin configurar | 500 | `ERROR_INTERNO`, sin detalles internos |
+
+**Cancelar una cita ajena devuelve 404**, igual que una inexistente. No se usa 403 para revelar esa diferencia. La plataforma de Azure sí puede devolver 401/403 antes de ejecutar un handler cuando rechaza acceso directo.
+
+El código interno `CONFLICTO_HORARIO` se convierte a `HORARIO_OCUPADO` en HTTP:
 
 ```json
 {
@@ -103,35 +150,13 @@ El esquema de autenticación mostrado es **ilustrativo**, no una decisión imple
 }
 ```
 
-## 4. Validaciones y respuestas
+Cancelar cambia el estado a `CANCELADA`; no borra el registro. La implementación en memoria comprueba coincidencia de veterinario e inicio. Al incorporar SQL se debe garantizar la exclusión de reservas concurrentes y revisar solapamientos según la duración del servicio; React no puede garantizar esa regla.
 
-| Situación | Código HTTP |
-| --- | --- |
-| JSON malformado / solicitud inválida | 400 |
-| Usuario no autenticado | 401 |
-| Sin autorización | 403 |
-| Recurso inexistente | 404 |
-| Franja ya reservada | 409 |
-| Regla de negocio incumplida (p. ej., fecha pasada) | 422 |
-| Error inesperado | 500 sin detalles internos |
+## 6. Estado de integración y pendientes
 
-No permitir reservas solapadas por veterinario; la validación definitiva debe realizarse en la **base de datos/transacción**, no solamente en React. Los estados del MVP son `PROGRAMADA` y `CANCELADA`; cancelar no elimina el registro.
-
-## 5. Reglas provisionales de negocio
-
-- Una sede; tres veterinarios (datos de prueba hasta definir el catálogo).
-- Atención de lunes a sábado, con franjas iniciales de 30 minutos.
-- La hora de apertura y cierre **está pendiente de definir**; no codificar horarios arbitrarios como una regla definitiva.
-- Guardar el instante de la cita en UTC y convertirlo a la zona local al mostrarlo.
-- Permitir agendar únicamente fechas futuras y citas asociadas con mascotas autorizadas para el cliente.
-- Los datos personales se gestionan en el backend; React no filtra como sustituto de autorización.
-
-## 6. Criterio de integración Rodrigo / Nicolás
-
-1. Nicolás revisa los tipos, rutas y ejemplos de este documento y propone cambios en un Pull Request si su implementación lo requiere.
-2. Rodrigo crea un cliente HTTP único en `apps/web/src/services/api.ts` que consuma las rutas establecidas.
-3. Mientras no exista una API autenticada, el frontend puede usar datos **sintéticos de demostración, identificados explícitamente como simulados**, sin afirmar que son citas persistidas.
-4. Se integran frontend y API primero en DEV, y se comprueban: salud, catálogos, alta de cita, consulta autorizada, conflicto 409 y cancelación.
-5. Los endpoints privados **no se publican abiertos** como solución temporal para la demostración.
-
-**Pendiente de confirmar entre ambos:** proveedor de identidad y roles; horario definitivo; forma exacta de la respuesta de creación y cancelación; datos opcionales de veterinario/servicio/cita.
+1. **Autenticación:** mecanismo SWA acordado en el código. La protección real del vínculo y las sesiones debe comprobarse en Azure antes de habilitar la confianza.
+2. **Persistencia:** la memoria requiere `PERSISTENCE=memory` y entorno local/test. Un `APP_ENV=dev` o `prod` explícito no permite memoria. En Azure las operaciones de negocio permanecen bloqueadas hasta incorporar el repositorio SQL.
+3. **SQL DEV:** el PR #9 prepara infraestructura y bootstrap de identidad. Quedan la creación/verificación del recurso, las migraciones, el repositorio, el mapeo de identidad y las pruebas de persistencia.
+4. **Frontend:** el PR #8 prepara sesión y cliente HTTP. El flujo completo de agenda se habilitará al integrar y verificar API, identidad y persistencia.
+5. **Prueba de integración:** verificar salud, catálogos, mascotas por usuario, creación, consulta, conflicto 409, cancelación y rechazo de acceso directo. Las pruebas unitarias no sustituyen la comprobación del despliegue.
+6. **Reglas pendientes:** horario definitivo de atención y catálogo real. No presentar datos sintéticos como registros persistidos ni horarios provisionales como decisiones finales.

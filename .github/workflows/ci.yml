@@ -2,7 +2,7 @@ name: CI - Veterinaria Patitas
 
 on:
   pull_request:
-    branches: [main]
+    # Incluye PR dependientes cuya base todavia no es main.
   push:
     branches: [main]
   workflow_dispatch:
@@ -34,9 +34,8 @@ jobs:
           test -f apps/web/package.json
           test -f apps/web/tsconfig.json
 
-      # TODO: cambiar a npm ci cuando apps/web/package-lock.json este versionado.
       - name: Instalar dependencias del frontend
-        run: npm install --prefix apps/web --no-audit --no-fund
+        run: npm ci --prefix apps/web --no-audit --no-fund
 
       - name: Revisar tipos del frontend
         run: npm run typecheck --prefix apps/web

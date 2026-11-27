@@ -1,6 +1,6 @@
 /**
- * Tipos compartidos con docs/api/contrato-citas.md (propuesta v0.1).
- * Nicolás debe confirmar nombres y respuestas antes de activar reservas reales.
+ * Tipos compatibles con el dominio del backend de Nicolás (PR #4)
+ * y con las respuestas publicas de los handlers HTTP (PR #6 y PR #10).
  */
 export type EstadoCita = 'PROGRAMADA' | 'CANCELADA'
 
@@ -15,14 +15,20 @@ export interface Servicio {
   duracionMinutos: number
 }
 
+export interface Mascota {
+  id: string
+  nombre: string
+}
+
 export interface CrearCitaRequest {
   mascotaId: string
   veterinarioId: string
   servicioId: string
   inicioUtc: string
-  motivo: string
+  motivo?: string
 }
 
+// El backend excluye clienteId de las respuestas publicas de citas.
 export interface Cita extends CrearCitaRequest {
   id: string
   estado: EstadoCita

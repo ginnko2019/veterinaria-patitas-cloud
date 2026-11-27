@@ -79,6 +79,11 @@ h1 span{color:#ee9774}
 .status-panel h3{font-size:24px;letter-spacing:-1px;margin:0}
 .status-panel p{color:#6c8080;font-size:13px;line-height:1.8;min-height:72px;margin:12px 0 25px}
 .status-panel__foot{padding-top:19px;border-top:1px solid #e6edeb}
+.session-area{display:flex;align-items:flex-start;flex-direction:column;gap:12px;margin-bottom:22px;padding:16px;background:#e9f4ee;border-radius:12px}
+.session-note{font-size:12px;line-height:1.6;color:#43645b}
+.session-link{display:inline-flex;padding:10px 15px;border-radius:8px;background:#196f5d;color:#fff;font-size:12px;font-weight:700}
+.session-link:hover,.session-link:focus-visible{background:#105542}
+
 .site-footer{background:#0e292f;color:#afc7c6}
 .footer-inner{min-height:105px;display:flex;align-items:center;justify-content:space-between;gap:20px;font-size:12px}
 .brand--footer .brand-name{color:white;font-size:22px}
