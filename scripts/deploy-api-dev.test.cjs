@@ -210,7 +210,7 @@ test('un SAS con escritura no cambia la Function', async () => {
 test('sync fallido agota tres intentos y falla; no declara despliegue verificado', async () => {
   const f = fixture({ syncFails: true });
   await assert.rejects(() => deploy(config, '/tmp/synthetic-package.zip', f.options), /SyncFailed/);
-  assert.equal(f.calls.filter(call => call.args[0] === 'rest').length, 3);
+  assert.equal(f.calls.filter(call => call.args[0] === 'rest' && call.args[2] === 'post').length, 3);
 });
 
 test('verifica Linux Y1 consultando ARM aunque Azure CLI no exponga reserved', async () => {
