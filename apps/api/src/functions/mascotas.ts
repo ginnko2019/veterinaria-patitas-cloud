@@ -27,8 +27,8 @@ export async function getMascotas(
     const clienteId = request.query.get("clienteId") ?? undefined;
     return {
       status: 200,
-      jsonBody: servicioCitas
-        .listarMascotas(usuario, clienteId)
+      jsonBody: (await servicioCitas
+        .listarMascotas(usuario, clienteId))
         .map(mascotaPublica),
     };
   } catch (error) {

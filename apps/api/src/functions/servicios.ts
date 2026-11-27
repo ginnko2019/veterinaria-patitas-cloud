@@ -19,7 +19,10 @@ export async function getServicios(
 
   try {
     const catalogoRepository = catalogo ?? obtenerRepositorioCatalogo();
-    return { status: 200, jsonBody: catalogoRepository.listarServicios() };
+    return {
+      status: 200,
+      jsonBody: await catalogoRepository.listarServicios(),
+    };
   } catch (error) {
     return respuestaError(error, "/api/servicios", context);
   }

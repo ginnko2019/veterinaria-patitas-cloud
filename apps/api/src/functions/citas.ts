@@ -76,7 +76,7 @@ export async function postCita(
       inicioUtc: body.inicioUtc,
       motivo: body.motivo,
     };
-    const creada = servicioCitas.crearCita(input, usuario);
+    const creada = await servicioCitas.crearCita(input, usuario);
     return { status: 201, jsonBody: citaPublica(creada) };
   } catch (error) {
     return respuestaError(error, "/api/citas", context);
@@ -95,7 +95,7 @@ export async function getCitas(
     const servicioCitas = servicio ?? obtenerServicioCitas();
     return {
       status: 200,
-      jsonBody: servicioCitas.listarCitas(usuario).map(citaPublica),
+      jsonBody: (await servicioCitas.listarCitas(usuario)).map(citaPublica),
     };
   } catch (error) {
     return respuestaError(error, "/api/citas", context);
@@ -121,7 +121,7 @@ export async function patchCancelarCita(
 
   try {
     const servicioCitas = servicio ?? obtenerServicioCitas();
-    const cancelada = servicioCitas.cancelarCita(id, usuario);
+    const cancelada = await servicioCitas.cancelarCita(id, usuario);
     return { status: 200, jsonBody: citaPublica(cancelada) };
   } catch (error) {
     return respuestaError(error, "/api/citas/{id}/cancelar", context);

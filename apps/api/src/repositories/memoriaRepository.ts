@@ -1,8 +1,10 @@
 import { Cita } from "../domain/cita";
 import { canonicalizarInicioUtc } from "../domain/canonicalizarInicioUtc";
+import { DominioError } from "../domain/errores";
 import {
   CatalogoRepository,
   CitasRepository,
+  Cliente,
   Mascota,
   Servicio,
   Veterinario,
@@ -14,10 +16,21 @@ export class MemoriaCitasRepository implements CitasRepository {
   private citas: Cita[] = [];
   private siguienteId = 1;
 
-  crear(cita: Cita): Cita {
+  async crear(cita: Cita): Promise<Cita> {
+    const inicioUtcCanonico = canonicalizarInicioUtc(cita.inicioUtc);
+    if (
+      this.citas.some(
+        (actual) =>
+          actual.veterinarioId === cita.veterinarioId &&
+          actual.inicioUtc === inicioUtcCanonico &&
+          actual.estado === "PROGRAMADA"
+      )
+    ) {
+      throw new DominioError("CONFLICTO_HORARIO", 409);
+    }
     const creada = {
       ...cita,
-      inicioUtc: canonicalizarInicioUtc(cita.inicioUtc),
+      inicioUtc: inicioUtcCanonico,
       id: `10000000-0000-4000-8000-${(
         "000000000000" + this.siguienteId
       ).slice(-12)}`,
@@ -27,40 +40,32 @@ export class MemoriaCitasRepository implements CitasRepository {
     return creada;
   }
 
-  listarPorCliente(clienteId: string): Cita[] {
+  async listarPorCliente(clienteId: string): Promise<Cita[]> {
     return this.citas.filter((cita) => cita.clienteId === clienteId);
   }
 
-  listarTodas(): Cita[] {
+  async listarTodas(): Promise<Cita[]> {
     return [...this.citas];
   }
 
-  obtenerPorId(id: string): Cita | undefined {
+  async obtenerPorId(id: string): Promise<Cita | undefined> {
     return this.citas.find((cita) => cita.id === id);
   }
 
-  cancelar(id: string): Cita | undefined {
-    const cita = this.obtenerPorId(id);
+  async cancelar(id: string): Promise<Cita | undefined> {
+    const cita = this.citas.find((actual) => actual.id === id);
     if (!cita) return undefined;
     cita.estado = "CANCELADA";
     return cita;
   }
-
-  buscarActivaPorVeterinarioEInicio(
-    veterinarioId: string,
-    inicioUtc: string
-  ): Cita | undefined {
-    const inicioUtcCanonico = canonicalizarInicioUtc(inicioUtc);
-    return this.citas.find(
-      (cita) =>
-        cita.veterinarioId === veterinarioId &&
-        cita.inicioUtc === inicioUtcCanonico &&
-        cita.estado === "PROGRAMADA"
-    );
-  }
 }
 
 export class MemoriaCatalogoRepository implements CatalogoRepository {
+  private clientes: Cliente[] = [
+    { id: "cliente-a", identityId: "cliente-a" },
+    { id: "cliente-b", identityId: "cliente-b" },
+  ];
+
   private mascotas: Mascota[] = [
     {
       id: "2c73eae2-d6f2-4f38-aeb8-82cb722f9328",
@@ -102,27 +107,33 @@ export class MemoriaCatalogoRepository implements CatalogoRepository {
     },
   ];
 
-  listarVeterinarios(): Veterinario[] {
+  async listarVeterinarios(): Promise<Veterinario[]> {
     return [...this.veterinarios];
   }
 
-  listarServicios(): Servicio[] {
+  async listarServicios(): Promise<Servicio[]> {
     return [...this.servicios];
   }
 
-  listarMascotasPorCliente(clienteId: string): Mascota[] {
+  async listarMascotasPorCliente(clienteId: string): Promise<Mascota[]> {
     return this.mascotas.filter((mascota) => mascota.clienteId === clienteId);
   }
 
-  obtenerMascota(id: string): Mascota | undefined {
+  async obtenerMascota(id: string): Promise<Mascota | undefined> {
     return this.mascotas.find((mascota) => mascota.id === id);
   }
 
-  obtenerVeterinario(id: string): Veterinario | undefined {
+  async obtenerVeterinario(id: string): Promise<Veterinario | undefined> {
     return this.veterinarios.find((veterinario) => veterinario.id === id);
   }
 
-  obtenerServicio(id: string): Servicio | undefined {
+  async obtenerServicio(id: string): Promise<Servicio | undefined> {
     return this.servicios.find((servicio) => servicio.id === id);
+  }
+
+  async obtenerClientePorIdentidad(
+    identityId: string
+  ): Promise<Cliente | undefined> {
+    return this.clientes.find((cliente) => cliente.identityId === identityId);
   }
 }

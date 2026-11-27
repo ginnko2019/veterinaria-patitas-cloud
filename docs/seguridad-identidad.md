@@ -34,18 +34,24 @@ Nunca debe aceptarse desde un encabezado o campo controlado por el usuario. La
 API exige el rol `authenticated`; cuando ese rol está presente, cualquier
 principal sin `ADMIN` se trata como `CLIENTE`.
 
-El `userId` de Static Web Apps debe enlazarse con el cliente correspondiente en
-la base de datos mediante la columna `identity_id`, que se incorporará en el PR
-de SQL.
+El `userId` de Static Web Apps se enlaza con el cliente correspondiente en
+`dbo.Clientes.identity_id`. La API consulta ese valor para obtener el `id`
+interno del cliente; nunca debe aceptar del navegador un `clienteId` como
+sustituto de la identidad autenticada. El bootstrap de clientes se realiza por
+un proceso de despliegue/administración controlado, no automáticamente al
+autenticar un usuario. Véase también la [guía de scripts de base de datos](../database/README.md).
 
 ## Persistencia cerrada por defecto
 
 La memoria exige `PERSISTENCE=memory` y `APP_ENV=local` o `APP_ENV=test`.
 Solamente cuando `APP_ENV` está ausente se permite el runner con `NODE_ENV=test`.
 Un `APP_ENV=dev` o `APP_ENV=prod` explícito impide usar memoria aunque
-`NODE_ENV=test`. Sin persistencia configurada, un usuario autenticado recibe
-`500 ERROR_INTERNO`, sin el detalle interno del problema. El repositorio SQL y
-sus migraciones siguen pendientes; este cambio no activa esa integración.
+`NODE_ENV=test`. La persistencia SQL requiere `PERSISTENCE=sql`, `SQL_SERVER` y `SQL_DATABASE`;
+una configuración incompleta falla cerrada. La API usa una identidad
+administrada de Microsoft Entra y sus permisos de lectura/escritura, separados
+de la identidad que ejecuta las migraciones. Sin persistencia configurada, un
+usuario autenticado recibe `500 ERROR_INTERNO`, sin el detalle interno del
+problema.
 
 ## Pruebas de la frontera SWA / Functions
 
