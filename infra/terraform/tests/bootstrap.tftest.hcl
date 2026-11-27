@@ -97,7 +97,7 @@ run "trust_swa_only_dev" {
     trust_swa_principal = true
   }
   assert {
-    condition = azurerm_linux_function_app.api.app_settings["TRUST_SWA_PRINCIPAL"] == "true"
+    condition     = azurerm_linux_function_app.api.app_settings["TRUST_SWA_PRINCIPAL"] == "true"
     error_message = "El ambiente DEV debe entregar el valor string true solo con activacion explicita."
   }
 }
@@ -105,7 +105,7 @@ run "trust_swa_only_dev" {
 run "reject_swa_trust_in_prod" {
   command = plan
   variables {
-    environment = "prod"
+    environment         = "prod"
     trust_swa_principal = true
   }
   expect_failures = [var.trust_swa_principal]
