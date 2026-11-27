@@ -25,7 +25,7 @@ Para preparar la base DEV y la conexión de Nicolás, seguir [SQL-DEV.md](SQL-DE
 
 Como el estado remoto y la identidad que ejecutará Terraform deben existir antes de Terraform, prepararlos una sola vez desde Azure Cloud Shell, siguiendo el Laboratorio 6 GitOps (OIDC y estado remoto).
 
-1. Elegir la suscripción correcta (`Azure subscription 1`) y confirmar permisos para crear Resource Groups y asignar RBAC.
+1. Elegir por ID la suscripción de destino y confirmar que Azure CLI devuelve el tenant esperado y `state=Enabled`, además de los permisos para crear Resource Groups y asignar RBAC. Usar ese mismo ID en `AZURE_SUBSCRIPTION_ID` del Environment de GitHub.
 2. Crear la aplicacion, su service principal y la credencial federada de GitHub Actions, ligada **al subject real del Environment**. DEV y PROD requieren preparaciones separadas.
 3. Ejecutar el bootstrap DEV descrito abajo: precrear `rg-patitas-dev`, preparar un grupo separado para el estado, registrar los namespaces necesarios y asignar los dos roles con ambitos limitados.
 4. Crear en GitHub **Settings → Environments** el ambiente `dev` y limitar sus despliegues a la rama `main`. Preparar `prod` cuando corresponda, con aprobacion de otro integrante antes de desplegar.
@@ -66,6 +66,8 @@ El script prepara `rg-patitas-dev` y, por separado, `rg-patitas-tfstate-dev`, la
 | `Storage Blob Data Contributor` | Solo el contenedor `tfstate` de la cuenta de estado |
 
 El bootstrap registra `Microsoft.Storage`, `Microsoft.Web`, `Microsoft.Insights`, `Microsoft.OperationalInsights` y `Microsoft.Sql`. AzureRM declara `resource_provider_registrations="none"` para no intentar registrarlos con la identidad limitada de GitHub. El contenedor se crea mediante ARM, sin obtener claves del storage. El JSON final contiene las cinco variables `TF_*` que deben configurarse en el Environment `dev`.
+
+La comparación de namespaces ignora diferencias entre mayúsculas y minúsculas, ya que Azure puede devolver `microsoft.insights`. Un namespace distinto o un estado de registro ausente o no reconocido detiene el bootstrap con un mensaje explícito. Si una ejecución se interrumpe, volver a ejecutarla con los mismos argumentos permite comprobar y reutilizar los recursos compatibles ya preparados; considerar terminado el bootstrap solo cuando aparezca el JSON final.
 
 El grupo de la aplicacion se adopta mediante `resource_group_import_id` e `imports.tf`. El workflow verifica que `TF_RESOURCE_GROUP_ID` coincida con la suscripcion y el ambiente seleccionados. El primer `plan` muestra la importacion; solo `apply` la registra en el estado. Una vez importado, los planes siguientes no repiten esa accion. Dejar el ID vacio conserva la creacion normal para usos locales u otros ambientes; el workflow DEV exige el bootstrap. Los mocks validan el contrato y el plan simulado, no prueban una importacion en Azure.
 
