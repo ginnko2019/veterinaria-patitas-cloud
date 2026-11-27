@@ -24,6 +24,24 @@ variable "name_suffix" {
   }
 }
 
+variable "resource_group_import_id" {
+  description = "ID ARM del grupo precreado durante el bootstrap. Vacio conserva la creacion normal."
+  type        = string
+  default     = ""
+  nullable    = false
+
+  validation {
+    condition = (
+      var.resource_group_import_id == "" ||
+      can(regex(
+        "^/subscriptions/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/resourceGroups/rg-patitas-${var.environment}$",
+        var.resource_group_import_id
+      ))
+    )
+    error_message = "El ID debe apuntar a /subscriptions/<GUID>/resourceGroups/rg-patitas-<environment>, o estar vacio."
+  }
+}
+
 variable "tags" {
   description = "Etiquetas institucionales comunes."
   type        = map(string)

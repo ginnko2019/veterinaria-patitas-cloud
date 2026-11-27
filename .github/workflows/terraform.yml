@@ -5,11 +5,13 @@ on:
     paths:
       - 'infra/terraform/**'
       - '.github/workflows/terraform.yml'
+      - 'scripts/bootstrap-azure-dev.sh'
   push:
     branches: [main]
     paths:
       - 'infra/terraform/**'
       - '.github/workflows/terraform.yml'
+      - 'scripts/bootstrap-azure-dev.sh'
   workflow_dispatch:
     inputs:
       environment:
@@ -33,6 +35,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+      - name: Validar sintaxis del bootstrap DEV
+        run: bash -n scripts/bootstrap-azure-dev.sh
       - name: Validar expresiones y scripts de GitHub Actions
         uses: docker://rhysd/actionlint:1.7.12
         with:
@@ -46,7 +50,7 @@ jobs:
         run: terraform -chdir=infra/terraform init -backend=false -input=false -lockfile=readonly
       - name: Validar HCL y esquema de recursos
         run: terraform -chdir=infra/terraform validate -no-color
-      - name: Probar configuracion SQL sin crear recursos en Azure
+      - name: Probar configuracion de infraestructura sin crear recursos en Azure
         run: terraform -chdir=infra/terraform test -no-color
 
   deploy:
@@ -74,6 +78,7 @@ jobs:
       TF_STATE_STORAGE: ${{ vars.TF_STATE_STORAGE }}
       TF_STATE_CONTAINER: ${{ vars.TF_STATE_CONTAINER }}
       TF_NAME_SUFFIX: ${{ vars.TF_NAME_SUFFIX }}
+      TF_VAR_resource_group_import_id: ${{ vars.TF_RESOURCE_GROUP_ID }}
       DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
       TF_VAR_sql_enabled: ${{ vars.SQL_ENABLED || 'false' }}
       TF_VAR_sql_entra_admin_name: ${{ vars.SQL_ENTRA_ADMIN_NAME }}
@@ -95,6 +100,18 @@ jobs:
               exit 1
             fi
           done
+
+          if [[ "$DEPLOY_ENVIRONMENT" == "dev" && -z "$TF_VAR_resource_group_import_id" ]]; then
+            echo "::error::DEV requiere TF_RESOURCE_GROUP_ID del bootstrap para usar permisos limitados al grupo."
+            exit 1
+          fi
+          if [[ -n "$TF_VAR_resource_group_import_id" ]]; then
+            patitas_expected_rg="/subscriptions/$ARM_SUBSCRIPTION_ID/resourceGroups/rg-patitas-$DEPLOY_ENVIRONMENT"
+            if [[ "$TF_VAR_resource_group_import_id" != "$patitas_expected_rg" ]]; then
+              echo "::error::TF_RESOURCE_GROUP_ID no coincide con la suscripcion y el ambiente seleccionados."
+              exit 1
+            fi
+          fi
 
       - name: Inicializar estado remoto con OIDC
         run: |
