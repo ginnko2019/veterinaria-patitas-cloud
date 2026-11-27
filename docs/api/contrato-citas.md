@@ -1,8 +1,8 @@
 # Contrato de integración — Veterinaria Patitas
 
-**Estado:** contrato compartido de los incrementos en revisión: API (#6), sesión del frontend (#8) y mascotas (#10).
+**Estado:** contrato de integración de API (#6), sesión del frontend (#8), mascotas (#10) y persistencia SQL (#11).
 
-**Versión:** 0.2 (MVP PEMU 2026)
+**Versión:** 0.3 (MVP PEMU 2026)
 
 **Frontend:** React + TypeScript (`apps/web`)
 
@@ -24,7 +24,7 @@ Este documento alinea las ramas de trabajo; no acredita un despliegue en Azure n
 
 - JSON con propiedades en `camelCase`; las listas son arreglos, sin envoltorio `{data:[...]}`.
 - Los identificadores de cita, mascota, veterinario y servicio son UUID expresados como cadenas.
-- El `userId` de SWA es una identidad opaca y puede no ser un UUID. El backend resuelve `userId → dbo.Clientes.identity_id → Clientes.id`; no crea clientes automáticamente. En SQL el `clienteId` interno es UUID y nunca sustituye a la identidad de sesión.
+- El `userId` de SWA es una identidad opaca y puede no ser un UUID. El backend resuelve `userId → dbo.Clientes.identity_id → Clientes.id`; no crea clientes automáticamente. En SQL el `clienteId` interno es UUID y nunca sustituye a la identidad de sesión. La consulta de mascotas por ADMIN selecciona ese identificador interno; el frontend conserva su tipo `string`.
 - Fechas ISO 8601 en UTC. La API normaliza `inicioUtc`; la interfaz mostrará la zona `America/Bogota`.
 - `motivo` es opcional. La respuesta pública de una cita no incluye `clienteId`.
 
@@ -155,7 +155,7 @@ Cancelar cambia el estado a `CANCELADA`; no borra el registro. La implementació
 ## 6. Estado de integración y pendientes
 
 1. **Autenticación:** mecanismo SWA acordado en el código. La protección real del vínculo y las sesiones debe comprobarse en Azure antes de habilitar la confianza.
-2. **Persistencia:** la memoria requiere `PERSISTENCE=memory` y entorno local/test. Un `APP_ENV=dev` o `prod` explícito no permite memoria. SQL requiere `PERSISTENCE=sql`, `SQL_SERVER` y `SQL_DATABASE`, y usa Microsoft Entra con identidad administrada. La [guía de base de datos](../../database/README.md) describe migraciones y permisos.
+2. **Persistencia:** la memoria requiere `PERSISTENCE=memory` y entorno local/test. Un `APP_ENV=dev` o `prod` explícito no permite memoria. SQL requiere `PERSISTENCE=sql`, `SQL_SERVER_FQDN`, `SQL_DATABASE_NAME` y `SQL_AUTH_MODE=managed-identity`. La conexión usa Microsoft Entra; la [guía de base de datos](../../database/README.md) distingue la identidad de la Function, las credenciales de desarrollo/pruebas y los permisos de cada una.
 3. **SQL DEV:** la migración versionada, repositorio, mapeo de identidad y pruebas están en este incremento. La creación/verificación del recurso, despliegue de la migración y validación de la identidad administrada siguen dependiendo del entorno DEV.
 4. **Frontend:** el PR #8 prepara sesión y cliente HTTP. El flujo completo de agenda se habilitará al integrar y verificar API, identidad y persistencia.
 5. **Prueba de integración:** verificar salud, catálogos, mascotas por usuario, creación, consulta, conflicto 409, cancelación y rechazo de acceso directo. Las pruebas unitarias no sustituyen la comprobación del despliegue.

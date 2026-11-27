@@ -146,15 +146,25 @@ describe("seguridad de identidad y persistencia", () => {
   });
 
   it.each([
-    ["PERSISTENCE desconocido", "filesystem", undefined, undefined],
-    ["SQL sin servidor", "sql", undefined, "base-demo"],
-    ["SQL sin base", "sql", "servidor-demo", undefined],
-  ])("falla cerrado con %s", async (_, persistence, server, database) => {
+    ["PERSISTENCE desconocido", "filesystem", undefined, undefined, undefined],
+    ["SQL sin servidor", "sql", undefined, "base-demo", "managed-identity"],
+    ["SQL con servidor vacío", "sql", "  ", "base-demo", "managed-identity"],
+    ["SQL sin base", "sql", "servidor-demo", undefined, "managed-identity"],
+    ["SQL con base vacía", "sql", "servidor-demo", "  ", "managed-identity"],
+    ["SQL sin modo de autenticación", "sql", "servidor-demo", "base-demo", undefined],
+    ["SQL con modo de autenticación vacío", "sql", "servidor-demo", "base-demo", ""],
+    ["SQL con modo de autenticación desconocido", "sql", "servidor-demo", "base-demo", "password"],
+    ["SQL con nombres de variables anteriores", "sql", undefined, undefined, "managed-identity"],
+  ])("falla cerrado con %s", async (_, persistence, server, database, authMode) => {
     vi.stubEnv("TRUST_SWA_PRINCIPAL", "true");
     vi.stubEnv("PERSISTENCE", persistence);
     vi.stubEnv("APP_ENV", "local");
-    vi.stubEnv("SQL_SERVER", server);
-    vi.stubEnv("SQL_DATABASE", database);
+    vi.stubEnv("SQL_SERVER_FQDN", server);
+    vi.stubEnv("SQL_DATABASE_NAME", database);
+    vi.stubEnv("SQL_AUTH_MODE", authMode);
+    // Los nombres antiguos no deben suplir una configuración incompleta.
+    vi.stubEnv("SQL_SERVER", "legacy-server.database.windows.net");
+    vi.stubEnv("SQL_DATABASE", "legacy-database");
 
     expect(() => obtenerServicioCitas()).toThrow("PERSISTENCIA_NO_CONFIGURADA");
     const respuesta = await getCitas(requestAutenticado(), contexto);
@@ -165,10 +175,12 @@ describe("seguridad de identidad y persistencia", () => {
     });
   });
 
-  it("construye SQL solo con servidor y base configurados", () => {
+  it("construye SQL con el contrato completo de Terraform", () => {
     vi.stubEnv("PERSISTENCE", "sql");
-    vi.stubEnv("SQL_SERVER", "servidor-demo");
-    vi.stubEnv("SQL_DATABASE", "base-demo");
+    vi.stubEnv("APP_ENV", "dev");
+    vi.stubEnv("SQL_SERVER_FQDN", "servidor-demo.database.windows.net");
+    vi.stubEnv("SQL_DATABASE_NAME", "patitas-dev");
+    vi.stubEnv("SQL_AUTH_MODE", "managed-identity");
     expect(() => obtenerServicioCitas()).not.toThrow();
   });
 

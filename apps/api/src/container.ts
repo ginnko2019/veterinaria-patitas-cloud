@@ -7,7 +7,10 @@ import {
   MemoriaCatalogoRepository,
   MemoriaCitasRepository,
 } from "./repositories/memoriaRepository";
-import { AzureSqlRepository } from "./repositories/azureSqlRepository";
+import {
+  AzureSqlRepository,
+  obtenerConfiguracionSql,
+} from "./repositories/azureSqlRepository";
 
 interface Repositorios {
   citas: CitasRepository;
@@ -53,9 +56,7 @@ function obtenerRepositorios(): Repositorios {
     case "memory":
       return obtenerRepositoriosMemoria();
     case "sql":
-      if (!process.env.SQL_SERVER?.trim() || !process.env.SQL_DATABASE?.trim()) {
-        return persistenciaNoConfigurada();
-      }
+      obtenerConfiguracionSql();
       if (!repositorioSql) repositorioSql = new AzureSqlRepository();
       return { citas: repositorioSql, catalogo: repositorioSql };
     default:

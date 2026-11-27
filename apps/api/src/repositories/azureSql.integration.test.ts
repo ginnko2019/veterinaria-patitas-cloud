@@ -4,8 +4,15 @@ import { DefaultAzureCredential } from "@azure/identity";
 import sql from "mssql";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { getCitas, patchCancelarCita, postCita } from "../functions/citas";
+import { obtenerConfiguracionSql } from "./azureSqlRepository";
 
-const habilitada = Boolean(process.env.SQL_SERVER && process.env.SQL_DATABASE);
+// Sin configuración SQL, el CI común omite esta prueba. Una configuración
+// parcial o desconocida sí la activa y falla antes de contactar a Azure.
+const habilitada = [
+  "SQL_SERVER_FQDN",
+  "SQL_DATABASE_NAME",
+  "SQL_AUTH_MODE",
+].some((key) => process.env[key] !== undefined);
 const describeSql = describe.skipIf(!habilitada);
 const credential = new DefaultAzureCredential();
 const identityA = `integration-a-${randomUUID()}`;
@@ -51,9 +58,8 @@ const baseInput = {
 
 describeSql("Azure SQL integration (DEV)", () => {
   beforeAll(async () => {
+    const { server, database } = obtenerConfiguracionSql();
     for (const key of [
-      "SQL_SERVER",
-      "SQL_DATABASE",
       "PERSISTENCE",
       "TRUST_SWA_PRINCIPAL",
     ]) {
@@ -66,9 +72,9 @@ describeSql("Azure SQL integration (DEV)", () => {
       "https://database.windows.net/.default"
     );
     if (!token) throw new Error("No se pudo obtener el token de Azure SQL.");
-    pool = await new sql.ConnectionPool({
-      server: process.env.SQL_SERVER!,
-      database: process.env.SQL_DATABASE!,
+    const nuevoPool = new sql.ConnectionPool({
+      server,
+      database,
       options: {
         encrypt: true,
         trustServerCertificate: false,
@@ -78,7 +84,9 @@ describeSql("Azure SQL integration (DEV)", () => {
         type: "azure-active-directory-access-token",
         options: { token: token.token },
       },
-    }).connect();
+    });
+    nuevoPool.on("error", () => console.error("SQL_TEST_POOL_ERROR"));
+    pool = await nuevoPool.connect();
 
     await pool
       .request()

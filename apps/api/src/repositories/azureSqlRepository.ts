@@ -14,6 +14,8 @@ import {
 const TOKEN_SCOPE = "https://database.windows.net/.default";
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+// SQL_AUTH_MODE declara el contrato de despliegue; esta cadena también admite
+// credenciales de desarrollo (por ejemplo, Azure CLI) y no fuerza una identidad.
 const credential = new DefaultAzureCredential();
 
 let connectionPool: sql.ConnectionPool | undefined;
@@ -71,14 +73,19 @@ function conflictoSql(error: unknown): boolean {
   );
 }
 
-async function obtenerPool(): Promise<sql.ConnectionPool> {
-  const server = process.env.SQL_SERVER?.trim();
-  const database = process.env.SQL_DATABASE?.trim();
-  if (!server || !database) {
+export function obtenerConfiguracionSql(): { server: string; database: string } {
+  const server = process.env.SQL_SERVER_FQDN?.trim();
+  const database = process.env.SQL_DATABASE_NAME?.trim();
+  if (!server || !database || process.env.SQL_AUTH_MODE !== "managed-identity") {
     throw Object.assign(new Error("PERSISTENCIA_NO_CONFIGURADA"), {
       code: "PERSISTENCIA_NO_CONFIGURADA",
     });
   }
+  return { server, database };
+}
+
+async function obtenerPool(): Promise<sql.ConnectionPool> {
+  const { server, database } = obtenerConfiguracionSql();
 
   const configKey = `${server}\u0000${database}`;
   const tokenValido =
@@ -105,6 +112,9 @@ async function obtenerPool(): Promise<sql.ConnectionPool> {
         options: { token: token.token },
       },
     });
+    // El pool puede emitir errores fuera de una petición. No registrar detalles
+    // del driver, tokens, consultas ni datos del cliente en este listener.
+    nuevoPool.on("error", () => console.error("SQL_POOL_ERROR"));
     await nuevoPool.connect();
 
     const poolAnterior = connectionPool;

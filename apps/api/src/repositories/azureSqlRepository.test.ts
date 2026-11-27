@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Cita } from "../domain/cita";
 import { DominioError } from "../domain/errores";
 import { respuestaError } from "../functions/http";
@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   inputs: [] as Array<[string, unknown, unknown]>,
   poolConstructor: vi.fn(),
   getToken: vi.fn(),
+  poolErrorOnConnect: undefined as Error | undefined,
 }));
 
 vi.mock("@azure/identity", () => ({
@@ -16,22 +17,31 @@ vi.mock("@azure/identity", () => ({
   })),
 }));
 
-vi.mock("mssql", () => {
+vi.mock("mssql", async () => {
+  const { EventEmitter } = await import("node:events");
   const mockMssql = {
-    ConnectionPool: mocks.poolConstructor.mockImplementation(() => ({
-      connect: vi.fn().mockResolvedValue(undefined),
-      close: vi.fn().mockResolvedValue(undefined),
-      request: () => {
-        const request: { input: Function; query: typeof mocks.query } = {
-          input: (name: string, type: unknown, value: unknown) => {
-            mocks.inputs.push([name, type, value]);
-            return request;
-          },
-          query: mocks.query,
-        };
-        return request;
-      },
-    })),
+    ConnectionPool: mocks.poolConstructor.mockImplementation(() => {
+      const pool = Object.assign(new EventEmitter(), {
+        connect: vi.fn(async () => {
+          if (mocks.poolErrorOnConnect) {
+            pool.emit("error", mocks.poolErrorOnConnect);
+          }
+          return pool;
+        }),
+        close: vi.fn().mockResolvedValue(undefined),
+        request: () => {
+          const request: { input: Function; query: typeof mocks.query } = {
+            input: (name: string, type: unknown, value: unknown) => {
+              mocks.inputs.push([name, type, value]);
+              return request;
+            },
+            query: mocks.query,
+          };
+          return request;
+        },
+      });
+      return pool;
+    }),
     UniqueIdentifier: "uniqueidentifier",
     DateTime2: (scale: number) => `datetime2(${scale})`,
     NVarChar: (length: number) => `nvarchar(${length})`,
@@ -67,14 +77,21 @@ describe("AzureSqlRepository", () => {
   const repository = new AzureSqlRepository();
 
   beforeEach(() => {
-    vi.stubEnv("SQL_SERVER", "unit-test.database.windows.net");
-    vi.stubEnv("SQL_DATABASE", "unit-test");
+    vi.stubEnv("SQL_SERVER_FQDN", "unit-test.database.windows.net");
+    vi.stubEnv("SQL_DATABASE_NAME", "unit-test");
+    vi.stubEnv("SQL_AUTH_MODE", "managed-identity");
+    mocks.getToken.mockReset();
     mocks.getToken.mockResolvedValue({
       token: "mock-token",
       expiresOnTimestamp: Date.now() + 60 * 60 * 1000,
     });
     mocks.query.mockReset();
     mocks.inputs.length = 0;
+    mocks.poolErrorOnConnect = undefined;
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   it("usa parámetros y mapea resultados con fecha UTC canónica", async () => {
@@ -89,7 +106,18 @@ describe("AzureSqlRepository", () => {
     });
     expect(mocks.query.mock.calls[0][0]).toContain("@clienteId");
     expect(mocks.query.mock.calls[0][0]).not.toContain(cita.clienteId);
-    expect(mocks.poolConstructor.mock.calls[0][0].options.useUTC).toBe(true);
+    expect(mocks.poolConstructor.mock.calls[0][0]).toMatchObject({
+      server: "unit-test.database.windows.net",
+      database: "unit-test",
+      options: { encrypt: true, trustServerCertificate: false, useUTC: true },
+      authentication: {
+        type: "azure-active-directory-access-token",
+        options: { token: "mock-token" },
+      },
+    });
+    expect(mocks.getToken).toHaveBeenCalledWith(
+      "https://database.windows.net/.default"
+    );
     expect(mocks.inputs).toEqual(
       expect.arrayContaining([
         ["clienteId", "uniqueidentifier", cita.clienteId],
@@ -97,6 +125,46 @@ describe("AzureSqlRepository", () => {
         ["motivo", "nvarchar(200)", cita.motivo],
       ])
     );
+  });
+
+  it("rechaza un modo SQL desconocido incluso si ya hay un pool válido", async () => {
+    mocks.query.mockResolvedValue({ recordset: [] });
+    await repository.listarTodas();
+    mocks.query.mockClear();
+    mocks.getToken.mockClear();
+
+    vi.stubEnv("SQL_AUTH_MODE", "password");
+
+    await expect(repository.listarTodas()).rejects.toMatchObject({
+      code: "PERSISTENCIA_NO_CONFIGURADA",
+    });
+    expect(mocks.query).not.toHaveBeenCalled();
+    expect(mocks.getToken).not.toHaveBeenCalled();
+  });
+
+  it("atiende errores del pool antes de conectar y después sin exponer detalles", async () => {
+    vi.stubEnv("SQL_SERVER_FQDN", "pool-errors.database.windows.net");
+    const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const errorPrivado = new Error("token, consulta y datos privados");
+    mocks.poolErrorOnConnect = errorPrivado;
+    mocks.query.mockResolvedValue({ recordset: [] });
+
+    try {
+      await expect(repository.listarTodas()).resolves.toEqual([]);
+      const pool = mocks.poolConstructor.mock.results[
+        mocks.poolConstructor.mock.results.length - 1
+      ].value;
+      expect(pool.listenerCount("error")).toBe(1);
+      expect(log).toHaveBeenCalledTimes(1);
+      expect(log).toHaveBeenCalledWith("SQL_POOL_ERROR");
+
+      expect(() => pool.emit("error", errorPrivado)).not.toThrow();
+      await repository.listarTodas();
+      expect(pool.listenerCount("error")).toBe(1);
+      expect(log.mock.calls).toEqual([["SQL_POOL_ERROR"], ["SQL_POOL_ERROR"]]);
+    } finally {
+      log.mockRestore();
+    }
   });
 
   it("mapea catálogos y mascotas desde las filas SQL", async () => {
