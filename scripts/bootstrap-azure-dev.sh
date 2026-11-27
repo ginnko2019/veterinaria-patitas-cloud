@@ -53,7 +53,12 @@ session="$(az account show --only-show-errors -o json)"
 jq -e --arg tenant "$tenant_id" '.tenantId == $tenant' <<<"$session" >/dev/null || fail 'Tenant de sesion inesperado.'
 account="$(arm account show)"
 jq -e --arg tenant "$tenant_id" --arg sub "$subscription_id" \
-  '.tenantId == $tenant and .id == $sub and .state == "Enabled"' <<<"$account" >/dev/null || fail 'Suscripcion o tenant inesperados.'
+  '.tenantId == $tenant and .id == $sub' <<<"$account" >/dev/null || fail 'Suscripcion o tenant inesperados.'
+if ! jq -e '.state | type == "string" and length > 0' <<<"$account" >/dev/null; then
+  fail 'Azure no devolvio el estado de la suscripcion o su valor no es valido. Revise Azure Portal > Suscripciones.'
+fi
+subscription_state="$(jq -r '.state' <<<"$account")"
+[[ "$subscription_state" == Enabled ]] || fail "La suscripcion requiere estado Enabled; estado recibido: $subscription_state. Revise Azure Portal > Suscripciones antes de continuar."
 sp="$(az ad sp show --id "$service_principal_id" --only-show-errors -o json)"
 jq -e --arg id "$service_principal_id" --arg client "$client_id" \
   '.id == $id and .appId == $client' <<<"$sp" >/dev/null || fail 'El service principal no corresponde al client-id.'
