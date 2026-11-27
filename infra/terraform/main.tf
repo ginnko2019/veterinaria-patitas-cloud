@@ -116,6 +116,12 @@ resource "azurerm_static_web_app" "web" {
   sku_size                     = "Standard"
   preview_environments_enabled = false
   tags                         = local.common_tags
+
+  # La publicacion real del frontend puede asociar este sitio con su repositorio.
+  # Terraform administra el sitio, pero no debe borrar la asociacion existente.
+  lifecycle {
+    ignore_changes = [repository_url, repository_branch]
+  }
 }
 
 # Esta asociacion configura AuthV2 en la Function al aplicar la infraestructura.
