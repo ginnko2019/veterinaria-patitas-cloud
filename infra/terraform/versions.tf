@@ -15,4 +15,8 @@ terraform {
 
 provider "azurerm" {
   features {}
+
+  # El bootstrap administrativo registra los namespaces necesarios. La identidad
+  # de GitHub solo administra el grupo del proyecto, no toda la suscripcion.
+  resource_provider_registrations = "none"
 }

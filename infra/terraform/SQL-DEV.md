@@ -38,6 +38,7 @@ Para una ejecución local autorizada, copiar `environments/sql-dev.tfvars.exampl
 terraform -chdir=infra/terraform plan \
   -var-file=environments/dev.tfvars \
   -var-file=sql-dev.tfvars.local \
+  -var="resource_group_import_id=$TF_RESOURCE_GROUP_ID" \
   -var="name_suffix=$TF_NAME_SUFFIX" \
   -out=tfplan
 ```

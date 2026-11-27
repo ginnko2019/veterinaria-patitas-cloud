@@ -11,10 +11,13 @@ Para preparar la base DEV y la conexión de Nicolás, seguir [SQL-DEV.md](SQL-DE
 - `versions.tf`: proveedor AzureRM 4.x y estado remoto.
 - `.terraform.lock.hcl`: versión y sumas de verificación del proveedor; se versiona y el pipeline lo utiliza sin modificarlo.
 - `variables.tf`: variables y validaciones.
+- `imports.tf`: adopcion declarativa y opcional del grupo precreado por el bootstrap.
 - `main.tf`: recursos declarativos.
 - `outputs.tf`: nombres y URL sin credenciales.
 - `sql.tf`, `sql-variables.tf` y `sql-outputs.tf`: servidor/base DEV, acceso de red y configuración de conexión sin contraseñas.
 - `tests/sql.tftest.hcl`: planes con un proveedor simulado; no crea recursos en Azure.
+- `tests/bootstrap.tftest.hcl`: limites del ID de importacion y plan simulado de adopcion.
+- `../../scripts/bootstrap-azure-dev.sh`: preparacion administrativa de grupos, estado y RBAC DEV.
 - `environments/dev.tfvars` y `environments/prod.tfvars`: parámetros de ambiente.
 - `.github/workflows/terraform.yml`: validación y plan/apply desde GitHub Actions.
 
@@ -23,11 +26,10 @@ Para preparar la base DEV y la conexión de Nicolás, seguir [SQL-DEV.md](SQL-DE
 Como el estado remoto y la identidad que ejecutará Terraform deben existir antes de Terraform, prepararlos una sola vez desde Azure Cloud Shell, siguiendo el Laboratorio 6 GitOps (OIDC y estado remoto).
 
 1. Elegir la suscripción correcta (`Azure subscription 1`) y confirmar permisos para crear Resource Groups y asignar RBAC.
-2. Crear un **grupo de recursos para el estado**, una cuenta Storage y un contenedor privado `tfstate`, habilitando autenticación Azure AD y acceso mínimo a los blobs.
-3. Crear una identidad federada para GitHub Actions, con credenciales OIDC de `dev` y `prod`, ligadas **a los sujetos reales de GitHub**; no asumir que el formato antiguo del subject sigue vigente.
-4. Darle solo los permisos de administración de infraestructura necesarios. Para el estado, asignar `Storage Blob Data Contributor` sobre el contenedor correspondiente. Evitar Owner permanente.
-5. Crear en GitHub **Settings → Environments** dos ambientes: `dev` y `prod`. Configurar al menos un aprobador para producción, revisando la disponibilidad de estas protecciones en el plan de GitHub.
-6. Establecer las siguientes **Environment variables** (no contraseñas) en **ambos** ambientes:
+2. Crear la aplicacion, su service principal y la credencial federada de GitHub Actions, ligada **al subject real del Environment**. DEV y PROD requieren preparaciones separadas.
+3. Ejecutar el bootstrap DEV descrito abajo: precrear `rg-patitas-dev`, preparar un grupo separado para el estado, registrar los namespaces necesarios y asignar los dos roles con ambitos limitados.
+4. Crear en GitHub **Settings → Environments** el ambiente `dev` y limitar sus despliegues a la rama `main`. Preparar `prod` cuando corresponda, con aprobacion de otro integrante antes de desplegar.
+5. Establecer las siguientes **Environment variables** (no contraseñas) para cada ambiente preparado:
 
 | Variable | Significado |
 | --- | --- |
@@ -38,8 +40,36 @@ Como el estado remoto y la identidad que ejecutará Terraform deben existir ante
 | `TF_STATE_STORAGE` | Storage Account existente del estado remoto |
 | `TF_STATE_CONTAINER` | Contenedor del estado (ej. `tfstate`) |
 | `TF_NAME_SUFFIX` | Cadena única 4–10 caracteres `[a-z0-9]` usada para recursos globales |
+| `TF_RESOURCE_GROUP_ID` | ID ARM del grupo precreado; obligatorio para DEV en este workflow |
 
 **Nunca guardar valores sensibles en el repositorio ni usar access keys como secretos de GitHub.** El backend Terraform utiliza OIDC y RBAC. El estado sí puede contener claves técnicas sensibles de los recursos que administra; restringir lectura y escritura y protegerlo mediante Storage cifrado.
+
+### Bootstrap DEV con permisos limitados
+
+Ejecutar [scripts/bootstrap-azure-dev.sh](../../scripts/bootstrap-azure-dev.sh) en Azure Cloud Shell Bash con una identidad administrativa autorizada para registrar proveedores, crear los recursos indicados y asignar RBAC. Los identificadores se pasan como argumentos; no se guardan valores personales en el script.
+
+```bash
+bash scripts/bootstrap-azure-dev.sh \
+  --subscription-id '<subscription-id>' \
+  --tenant-id '<tenant-id>' \
+  --client-id '<client-id-de-github>' \
+  --service-principal-id '<object-id-del-service-principal>' \
+  --name-suffix '<sufijo-4-a-10-caracteres>' \
+  --location eastus2
+```
+
+El script prepara `rg-patitas-dev` y, por separado, `rg-patitas-tfstate-dev`, la cuenta `stpatitasstate<SUFFIX>` y el contenedor `tfstate`. El storage usa Standard LRS, TLS 1.2, HTTPS, autenticacion Entra sin Shared Key ni acceso anonimo, versionado y retencion para borrados. El endpoint permanece publico y autenticado para permitir acceso desde runners alojados por GitHub; este paso no implementa una red privada. Los recursos existentes deben coincidir con el proyecto, ambiente, ubicacion y configuracion esperados; un conflicto se informa sin sobrescribir el recurso ajeno.
+
+| Rol de la identidad GitHub | Ambito |
+| --- | --- |
+| `Contributor` | Solo `rg-patitas-dev` |
+| `Storage Blob Data Contributor` | Solo el contenedor `tfstate` de la cuenta de estado |
+
+El bootstrap registra `Microsoft.Storage`, `Microsoft.Web`, `Microsoft.Insights`, `Microsoft.OperationalInsights` y `Microsoft.Sql`. AzureRM declara `resource_provider_registrations="none"` para no intentar registrarlos con la identidad limitada de GitHub. El contenedor se crea mediante ARM, sin obtener claves del storage. El JSON final contiene las cinco variables `TF_*` que deben configurarse en el Environment `dev`.
+
+El grupo de la aplicacion se adopta mediante `resource_group_import_id` e `imports.tf`. El workflow verifica que `TF_RESOURCE_GROUP_ID` coincida con la suscripcion y el ambiente seleccionados. El primer `plan` muestra la importacion; solo `apply` la registra en el estado. Una vez importado, los planes siguientes no repiten esa accion. Dejar el ID vacio conserva la creacion normal para usos locales u otros ambientes; el workflow DEV exige el bootstrap. Los mocks validan el contrato y el plan simulado, no prueban una importacion en Azure.
+
+Referencias: [importaciones declarativas](https://developer.hashicorp.com/terraform/language/import/single-resource), [AzureRM 4.81.0 y registro de proveedores](https://github.com/hashicorp/terraform-provider-azurerm/blob/v4.81.0/website/docs/index.html.markdown) y [permisos del backend Azure](https://developer.hashicorp.com/terraform/language/backend/azurerm).
 
 ### Confirmar el subject OIDC antes de crear la credencial federada
 
@@ -50,7 +80,7 @@ GitHub utiliza sujetos inmutables para repositorios creados desde el 15 de julio
 | `dev` | `repo:ginnko2019@53383580/veterinaria-patitas-cloud@1454648615:environment:dev` |
 | `prod` | `repo:ginnko2019@53383580/veterinaria-patitas-cloud@1454648615:environment:prod` |
 
-Estos valores no acreditan que se haya verificado el token o la personalización OIDC del repositorio. Antes de crear cada credencial federada, comprobar en la configuración o vista previa de GitHub el subject real del Environment y cualquier plantilla personalizada. La credencial debe coincidir exactamente con ese valor, con issuer `https://token.actions.githubusercontent.com` y audience `api://AzureADTokenExchange`. No utilizar automáticamente el formato antiguo basado solo en nombres. Consultar la [referencia OIDC de GitHub](https://docs.github.com/en/actions/reference/security/oidc) y la [guía de Microsoft sobre sujetos inmutables](https://learn.microsoft.com/en-us/entra/workload-id/workload-identities-github-immutable-subjects).
+El 27 de noviembre de 2026 se verifico en la UI de GitHub la plantilla predeterminada y el prefijo inmutable de este repositorio. Se creo `dev`, limitado a `main`, y se guardaron los identificadores Azure y del administrador SQL. Rodrigo confirmo mediante la salida de Azure CLI la creacion del service principal y de `github-patitas-dev`, con el subject DEV mostrado, issuer `https://token.actions.githubusercontent.com` y audience `api://AzureADTokenExchange`. La emision del token y su aceptacion por Azure todavia deben comprobarse mediante una ejecucion real. PROD sigue pendiente. Antes de agregar otra credencial, volver a comprobar su Environment y la configuracion OIDC. Consultar la [referencia OIDC de GitHub](https://docs.github.com/en/actions/reference/security/oidc) y la [guía de Microsoft sobre sujetos inmutables](https://learn.microsoft.com/en-us/entra/workload-id/workload-identities-github-immutable-subjects).
 
 ## 2. Comprobación automática
 
@@ -61,6 +91,7 @@ Cada Pull Request que cambie `infra/terraform/**` dispara:
 - `terraform init -backend=false -lockfile=readonly` (no necesita acceso Azure)
 - `terraform validate`
 - `terraform test` con proveedor simulado: SQL opcional, configuración DEV y rechazos de PROD, firewall abierto o administrador ausente.
+- Comprobacion de importacion opcional y rechazo de IDs de otro ambiente o de suscripcion mal formada, mediante mocks y un override limitado al caso positivo.
 
 Estas comprobaciones **no prueban** permisos, disponibilidad regional ni costos. Es necesario ejecutar `plan` contra la suscripción antes de afirmar que el despliegue funciona.
 
